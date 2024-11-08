@@ -1,0 +1,28 @@
+version: '3.8'
+services:
+  app:
+    build:
+      context: . # project root
+      dockerfile: ./Dockerfile
+    ports:
+      - "5173:5173" # map the frontend port
+      - "3000:3000" # map the backend port
+    volumes:
+      - .:/app # mounts project files for live changes without needing to rebuild container
+    environment:
+      - DATABASE_URL=postgres://postgres:password@db:5432/palette-db
+      - NODE_ENV=development
+    command: sh -c "npm run migrate && npm run dev"
+    platform: linux/arm64/v8
+
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: palette-db
+    volumes:
+      - pgdata:/var/lib/postgresql/data  # persists data within the container
+
+volumes:
+  pgdata:

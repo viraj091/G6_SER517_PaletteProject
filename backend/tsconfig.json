@@ -4,13 +4,17 @@
     "module": "ESNext",
     "moduleResolution": "node",
     "outDir": "./dist",
-    "rootDir": "./src",
+    "sourceRoot": "./src",
+    "rootDir": "../",
+    "baseUrl": "./",
+    "paths": {},
     "strict": true,
     "esModuleInterop": true,
+    "sourceMap": true,
     "skipLibCheck": true,
-    "types": ["node", "express", "@prisma/client"],
-    "forceConsistentCasingInFileNames": true,
+    "types": ["node", "express", "@prisma/client", "jest"],
+    "forceConsistentCasingInFileNames": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "dist", "**/prisma/**"]
 }

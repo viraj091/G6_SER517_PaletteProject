@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist",
+    "sourceRoot": "./",
+    "rootDir": "./src",
+    "strict": true,
+    "sourceMap": true,
+    "baseUrl": "./"
+  },
+  "include": ["src/**/*.ts"]
+}

@@ -11,10 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
-.env
-# python
-__pycache__
-env
+
+# env files
+*.env
 
 # Editor directories and files
 .vscode/*
@@ -26,3 +25,6 @@ env
 *.njsproj
 *.sln
 *.sw?
+
+# jest reports
+coverage/
