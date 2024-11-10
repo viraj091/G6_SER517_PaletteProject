@@ -31,6 +31,7 @@ import {
 } from "@utils";
 
 import { Criteria, Rubric } from "palette-types";
+import CSVExport from "@features/rubricBuilder/CSVExport.tsx";
 
 export default function RubricBuilder(): ReactElement {
   /**
@@ -367,12 +368,7 @@ export default function RubricBuilder(): ReactElement {
                 Import CSV
               </button>
 
-              <button
-                className="transition-all ease-in-out duration-300 bg-blue-600 text-white font-bold rounded-lg py-2 px-4 hover:bg-blue-700 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                onClick={(event) => event.preventDefault()} // Placeholder
-              >
-                Export to CSV
-              </button>
+              <CSVExport rubric={rubric} />
             </div>
 
             {/* Rubric Total Points */}
