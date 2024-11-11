@@ -9,8 +9,9 @@ import {
 import { useSortable } from "@dnd-kit/sortable"; // Import useSortable
 import { CSS } from "@dnd-kit/utilities"; // Import CSS utilities
 import { Criteria, Rating } from "palette-types";
-import { calcMaxPoints, createRating } from "@utils";
-import UpdatedRatingInput from "@features/rubricBuilder/UpdatedRatingInput.tsx";
+import { createRating } from "@utils";
+import RatingInput from "@features/rubricBuilder/RatingInput";
+import { motion } from "framer-motion";
 
 export default function CriteriaInput({
   index,
@@ -38,8 +39,19 @@ export default function CriteriaInput({
    * Whenever ratings change, recalculate criterion's max points
    */
   useEffect(() => {
-    const maxRating = calcMaxPoints(ratings);
+    // sort ratings in descending order by points
+    const sortedRatings = [...ratings].sort((a, b) => b.points - a.points);
+
+    // Only update state if the sorted array is different from the current ratings
+    if (JSON.stringify(ratings) !== JSON.stringify(sortedRatings)) {
+      setRatings(sortedRatings);
+    }
+
+    // calculate max points after sorting
+    const maxRating = sortedRatings[0]?.points || 0; // defaults to 0 if ratings array is empty
     setMaxPoints(maxRating);
+
+    // update criterion with new max points value
     const newCriterion = { ...criterion, points: maxRating };
     handleCriteriaUpdate(index, newCriterion);
   }, [ratings]);
@@ -57,14 +69,6 @@ export default function CriteriaInput({
     "transition-all ease-in-out duration-300 bg-violet-200 text-violet-600 font-bold rounded-lg px-4" +
     " py-2 justify-self-end hover:bg-violet-300 focus:ring-2 focus:ring-violet-500 focus:outline-none opacity-50 cursor-not-allowed";
 
-  const [addRatingStyle, setAddRatingStyle] = useState(addButtonActiveStyle);
-
-  useEffect(() => {
-    if (ratings.length >= 4) {
-      setAddRatingStyle(addButtonInactiveStyle);
-    }
-  });
-
   /**
    * Criteria change functionality.
    */
@@ -81,12 +85,9 @@ export default function CriteriaInput({
     event: ReactMouseEvent,
     index: number,
   ) => {
-    console.log("removing the criterion!");
     event.preventDefault();
     event.stopPropagation();
-    setTimeout(() => {
-      removeCriterion(index);
-    }, 300); // removes criterion after the 300ms animation
+    removeCriterion(index);
   };
 
   // Update criterion when ratings change.
@@ -111,7 +112,7 @@ export default function CriteriaInput({
   const renderRatingOptions = () => {
     return ratings.map((rating: Rating, ratingIndex: number) => {
       return (
-        <UpdatedRatingInput
+        <RatingInput
           key={rating.key}
           ratingIndex={ratingIndex}
           rating={rating}
@@ -129,9 +130,9 @@ export default function CriteriaInput({
     event.preventDefault();
 
     if (ratings.length >= 4) return; // limit max of 4 ratings to be added
-    // insert new rating between full marks and no marks
-    ratings.splice(1, 0, createRating(ratings.length));
-    setRatings(ratings);
+    const updatedRatings = ratings.slice(0);
+    updatedRatings.push(createRating(ratings.length));
+    setRatings(updatedRatings);
     criterion.ratings = ratings;
     handleCriteriaUpdate(index, criterion);
   };
@@ -219,13 +220,12 @@ export default function CriteriaInput({
           onChange={handleDescriptionChange}
         />
 
-        <div
-          className={
-            "grid grid-flow-col gap-4 m-auto max-w-full overflow-y-auto"
-          }
+        <motion.div
+          layout
+          className={"grid grid-flow-col gap-4 m-auto max-w-full"}
         >
           {renderRatingOptions()}
-        </div>
+        </motion.div>
 
         <div className={"flex gap-3 items-end justify-between"}>
           <div className="flex gap-3">
@@ -265,11 +265,16 @@ export default function CriteriaInput({
               +
             </button>
             <button
-              className={addRatingStyle}
+              className={
+                ratings.length < 4
+                  ? addButtonActiveStyle
+                  : addButtonInactiveStyle
+              }
               onClick={(event: ReactMouseEvent<HTMLButtonElement>) =>
                 handleAddRating(event, index)
               }
               type={"button"}
+              disabled={ratings.length >= 4}
             >
               Add Rating
             </button>
