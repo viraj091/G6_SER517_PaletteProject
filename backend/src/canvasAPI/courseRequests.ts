@@ -4,10 +4,10 @@
 
 import { fetchAPI } from "../utils/fetchAPI.js";
 import {
-  CanvasCourse,
-  Course,
   Assignment,
   CanvasAssignment,
+  CanvasCourse,
+  Course,
 } from "palette-types";
 
 /**
@@ -57,9 +57,10 @@ function mapToPaletteAssignment(
     description: canvasAssignment.description || "",
     dueDate: canvasAssignment.due_at || "",
     pointsPossible: canvasAssignment.points_possible,
-    rubricId: canvasAssignment.rubric
-      ? canvasAssignment.rubric[0].id
-      : "No rubrics are associated with this" + " assignment",
+    rubricId:
+      canvasAssignment.rubric && canvasAssignment.rubric_settings
+        ? canvasAssignment.rubric_settings.id
+        : -1,
   };
 }
 

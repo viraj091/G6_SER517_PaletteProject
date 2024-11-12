@@ -7,13 +7,13 @@ import {
   DeleteRubricRequest,
   DeleteRubricResponse,
   GetAllRubricsRequest,
-  GetAllRubricsResponse,
   GetRubricRequest,
-  GetRubricResponse,
+  Rubric,
   UpdateRubricRequest,
   UpdateRubricResponse,
 } from "palette-types";
 import { fetchAPI } from "../utils/fetchAPI.js";
+import { toPaletteFormat } from "../utils/rubricUtils.js";
 
 /**
  * API methods for interacting with Canvas Rubrics.
@@ -40,9 +40,11 @@ export const RubricsAPI = {
    * @param request - The request object containing rubric ID and type (course).
    * @returns A promise that resolves to the retrieved rubric response.
    */
-  async getRubric(request: GetRubricRequest): Promise<GetRubricResponse> {
-    return fetchAPI<CanvasRubric>(
-      `/courses/${request.course_id}/rubrics/${request.id}`,
+  async getRubric(request: GetRubricRequest): Promise<Rubric> {
+    return toPaletteFormat(
+      await fetchAPI<CanvasRubric>(
+        `/courses/${request.course_id}/rubrics/${request.id}`,
+      ),
     );
   },
 
@@ -84,14 +86,23 @@ export const RubricsAPI = {
   /**
    * Get all rubrics in a specific course.
    * @param {GetAllRubricsRequest} request - The request object containing course ID.
-   * @returns {Promise<GetAllRubricsResponse>} A promise that resolves to the retrieved rubrics response.
+   * @returns {Promise<Rubric[]>} A promise that resolves to the retrieved rubrics response.
    */
-  async getAllRubrics(
-    request: GetAllRubricsRequest,
-  ): Promise<GetAllRubricsResponse> {
-    return fetchAPI<GetAllRubricsResponse>(
+  async getAllRubrics(request: GetAllRubricsRequest): Promise<Rubric[]> {
+    const canvasRubrics: CanvasRubric[] = await fetchAPI<CanvasRubric[]>(
       `/courses/${request.courseID}/rubrics?per_page=100`,
     );
+
+    // Check if the response is an array
+    if (!Array.isArray(canvasRubrics)) {
+      throw new Error(
+        "Unexpected response format: Expected an array of rubrics.",
+      );
+    }
+
+    return canvasRubrics.map((rubric) => {
+      return toPaletteFormat(rubric);
+    });
   },
 
   /**
