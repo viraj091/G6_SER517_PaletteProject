@@ -6,8 +6,18 @@ import {
   RequestFormattedCriteria,
   RequestFormattedRubric,
   Rubric,
+  RubricAssociation,
 } from "palette-types";
 
+import { v4 as uuid } from "uuid"; /**
+ * Transforms the rubric object into the format expected by the Canvas API.
+ *
+ */
+
+/**
+ * Transforms the rubric object into the format expected by the Canvas API.
+ *
+ */
 /**
  * Transforms the rubric object into the format expected by the Canvas API.
  *
@@ -20,7 +30,7 @@ export const toCanvasFormat = (
   const formattedCriteria: RequestFormattedCriteria = Object.fromEntries(
     originalRubric.criteria.map((criterion, index) => {
       return [
-        index,
+        index + 1,
         {
           description: criterion.description,
           long_description: criterion.longDescription,
@@ -28,7 +38,7 @@ export const toCanvasFormat = (
           ratings: Object.fromEntries(
             criterion.ratings.map((rating, ratingIndex) => {
               return [
-                ratingIndex,
+                ratingIndex + 1,
                 {
                   description: rating.description,
                   long_description: rating.longDescription,
@@ -44,7 +54,6 @@ export const toCanvasFormat = (
   // return the transformed rubric object
   return {
     title: originalRubric.title,
-    free_form_criterion_comments: true, // todo: default value
     criteria: formattedCriteria,
   };
 };
@@ -54,6 +63,7 @@ export const toPaletteFormat = (rubric: CanvasRubric): Rubric => {
     id: rubric.id,
     title: rubric.title,
     pointsPossible: rubric.points_possible,
+    key: uuid(),
     criteria:
       rubric.data?.map((criterion: CanvasCriterion) => {
         return {
@@ -61,6 +71,7 @@ export const toPaletteFormat = (rubric: CanvasRubric): Rubric => {
           description: criterion.description,
           longDescription: criterion.long_description,
           points: criterion.points,
+          key: uuid(),
           updatePoints: () => {
             throw new Error("Not implemented");
           },
@@ -70,9 +81,25 @@ export const toPaletteFormat = (rubric: CanvasRubric): Rubric => {
               description: rating.description,
               longDescription: rating.long_description,
               points: rating.points,
+              key: uuid(),
             };
           }),
         };
       }) || [], // or if there are no criteria, return an empty array
   } as Rubric;
+};
+
+/**
+ * Factory function to make a rubric association.
+ * @param assignment_id
+ */
+export const createAssignmentAssociation = (
+  assignment_id: number,
+): RubricAssociation => {
+  return {
+    association_type: "Assignment",
+    association_id: assignment_id,
+    use_for_grading: true,
+    purpose: "grading",
+  };
 };

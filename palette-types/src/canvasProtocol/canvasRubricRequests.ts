@@ -1,17 +1,16 @@
 import { CanvasCriterion } from "../canvasTypes/CanvasCriterion";
 import { CanvasRating } from "../canvasTypes/CanvasRating";
-import { CanvasAssociation } from "../canvasTypes/CanvasAssociation";
 
 /**
- * This type represents the request body for creating a new CanvasRubric.
- *
- * https://canvas.instructure.com/doc/api/rubrics.html#method.rubrics.create
+ * This type represents the request body for creating or updating a CanvasRubric.
  */
-export interface CreateRubricRequest {
-  id?: number; // The ID of the rubric
-  rubric_association_id: number; // The ID of the object associated with the rubric
-  rubric: RequestFormattedRubric;
-  rubric_association: RequestFormattedAssociation;
+export interface RubricRequestBody {
+  rubric_id?: number;
+  course_id: number;
+  data?: {
+    rubric_association: RubricAssociation;
+    rubric: RequestFormattedRubric;
+  };
 }
 
 /**
@@ -20,7 +19,6 @@ export interface CreateRubricRequest {
  */
 export interface RequestFormattedRubric {
   title: string;
-  free_form_criterion_comments: boolean;
   criteria: RequestFormattedCriteria;
 }
 
@@ -42,13 +40,11 @@ export type RequestFormattedCriteria = Record<
 export type RequestFormattedRatings = Record<number, CanvasRating>;
 
 /**
- * Defines the rubric association fields that can be created (according to the API).
+ * Defines a rubric association object used in create and update requests.
  */
-export type RequestFormattedAssociation = Pick<
-  CanvasAssociation,
-  | "association_id"
-  | "association_type"
-  | "use_for_grading"
-  | "hide_score_total"
-  | "purpose"
->;
+export interface RubricAssociation {
+  association_type: "Assignment" | "Course";
+  association_id: number;
+  use_for_grading: boolean;
+  purpose: "grading";
+}

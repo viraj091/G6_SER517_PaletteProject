@@ -1,36 +1,50 @@
 import { ReactElement, useEffect, useState } from "react";
-import { Course, Assignment, PaletteAPIResponse } from "palette-types";
+import { Assignment, PaletteAPIResponse } from "palette-types";
 import { useFetch } from "@hooks";
+import { useCourse } from "../../context";
+import { useAssignment } from "../../context/AssignmentProvider.tsx";
+import LoadingDots from "../../components/LoadingDots.tsx";
 
-export default function AssignmentSelection({
-  course,
-  selectAssignment,
+export default function AssignmentSelectionMenu({
+  onSelect,
 }: {
-  course: Course;
-  selectAssignment: (assignment: Assignment) => void;
+  onSelect: (open: boolean) => void;
 }): ReactElement {
   const [errorMessage, setErrorMessage] = useState<string>();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
+  const { activeCourse } = useCourse();
+  const { setActiveAssignment } = useAssignment();
+
   const { fetchData: getAssignments } = useFetch(
-    `/courses/${course.id}/assignments`,
+    `/courses/${activeCourse?.id}/assignments`,
   );
 
   useEffect(() => {
+    if (!activeCourse) return;
     void fetchAssignments();
   }, []);
 
   const renderAssignments = () => {
-    if (loading) return <p>Loading...</p>;
+    if (loading) return <LoadingDots />;
     if (errorMessage)
-      return <p className="text-red-500 font-normal">Error: {errorMessage}</p>;
+      return (
+        <p className="text-red-500 font-normal mt-2">Error: {errorMessage}</p>
+      );
+
+    if (!activeCourse) {
+      return (
+        <div className={"text-red-500 font-medium mt-2"}>
+          Select a course first to view assignments.
+        </div>
+      );
+    }
     if (assignments.length === 0)
-      return <div>No courses available to display</div>;
+      return <div>No assignments are available to display</div>;
 
     return (
-      <div className={"grid gap-2 mt-0.5"}>
-        Select an assignment to grade
+      <div className={"grid gap-2 my-4"}>
         <div className={"grid gap-2 mt-0.5"}>
           {assignments.map((assignment: Assignment) => (
             <div
@@ -49,7 +63,8 @@ export default function AssignmentSelection({
   };
 
   const handleAssignmentSelection = (assignment: Assignment) => {
-    selectAssignment(assignment);
+    setActiveAssignment(assignment);
+    onSelect(false);
   };
 
   const fetchAssignments = async () => {
@@ -77,9 +92,18 @@ export default function AssignmentSelection({
   };
 
   return (
-    <div>
-      Assignments for {course.name}
+    <div className={"grid gap-2 text-2xl"}>
+      {activeCourse ? <p>Assignments for {activeCourse.name}</p> : null}
       <div>{renderAssignments()}</div>
+      <button
+        onClick={void fetchAssignments}
+        className={
+          "justify-self-end text-2xl bg-blue-500 px-2 py-1 rounded-full hover:opacity-80 active:opacity-70"
+        }
+        type={"button"}
+      >
+        Refresh
+      </button>
     </div>
   );
 }

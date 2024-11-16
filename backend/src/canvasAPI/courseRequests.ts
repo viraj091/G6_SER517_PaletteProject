@@ -60,7 +60,7 @@ function mapToPaletteAssignment(
     rubricId:
       canvasAssignment.rubric && canvasAssignment.rubric_settings
         ? canvasAssignment.rubric_settings.id
-        : -1,
+        : undefined,
   };
 }
 
@@ -89,8 +89,22 @@ export const CoursesAPI = {
       throw new Error("Course ID is undefined");
     }
     const canvasAssignments = await fetchAPI<CanvasAssignment[]>(
-      `/courses/${courseId}/assignments`,
+      `/courses/${courseId}/assignments?per_page=50`,
     );
     return canvasAssignments.map(mapToPaletteAssignment);
+  },
+
+  async getAssignment(
+    courseId: string,
+    assignmentId: string,
+  ): Promise<Assignment> {
+    if (!assignmentId) {
+      throw new Error("Assignment ID is undefined");
+    }
+    const canvasAssignment = await fetchAPI<CanvasAssignment>(
+      `courses/${courseId}/assignments/${assignmentId}`,
+    );
+
+    return mapToPaletteAssignment(canvasAssignment);
   },
 };

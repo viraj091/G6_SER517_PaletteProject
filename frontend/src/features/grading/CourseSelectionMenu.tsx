@@ -7,17 +7,19 @@
 import { MouseEvent, ReactElement, useEffect, useState } from "react";
 import { useFetch } from "@hooks";
 import { Course, PaletteAPIResponse } from "palette-types";
+import { useCourse } from "src/context/CourseProvider";
 
-export default function CourseSelection({
-  selectCourse,
+export default function CourseSelectionMenu({
+  onSelect,
 }: {
-  selectCourse: (course: Course) => void;
+  onSelect: (open: boolean) => void;
 }): ReactElement {
   const [errorMessage, setErrorMessage] = useState<string>();
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
   const { fetchData: getCourses } = useFetch("/courses");
+  const { setActiveCourse } = useCourse();
 
   /**
    * Run fetchCourses when component initially mounts.
@@ -60,14 +62,14 @@ export default function CourseSelection({
     if (courses.length === 0) return <div>No courses available to display</div>;
 
     return (
-      <div className={"grid gap-2 mt-0.5"}>
-        Select the course you'd like to grade!
+      <div className={"grid gap-2 my-1"}>
+        Select the course you'd like to grade:
         <div>
           {courses.map((course: Course) => (
             <div
               key={course.id}
               className={
-                "flex gap-4 bg-gray-600 hover:bg-gray-500 px-3 py-1 cursor-pointer rounded-full text-2xl font-bold"
+                "flex gap-4 bg-gray-600 hover:bg-gray-500 px-3 py-1 cursor-pointer rounded-full font-bold"
               }
               onClick={() => handleCourseSelection(course)}
             >
@@ -80,7 +82,8 @@ export default function CourseSelection({
   };
 
   const handleCourseSelection = (course: Course) => {
-    selectCourse(course);
+    setActiveCourse(course);
+    onSelect(false);
   };
 
   /**
@@ -92,7 +95,7 @@ export default function CourseSelection({
     void fetchCourses();
   };
   return (
-    <div className={"grid gap-2"}>
+    <div className={"grid gap-2 text-2xl"}>
       <div>{renderCourses()}</div>
       <button
         onClick={handleGetCourses}
