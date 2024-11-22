@@ -7,7 +7,7 @@ import {
   assignmentParamValidator,
   courseParamValidator,
   idAndCourseParamValidator,
-} from "../validators/baseParamValidators.js";
+} from "../validators/paramValidators";
 
 import {
   getAllCourses,
@@ -32,6 +32,7 @@ courseRouter.get(
   "/:course_id/assignments/:assignment_id/submissions",
   courseParamValidator,
   assignmentParamValidator,
+  validationErrorHandler,
   getSubmissions,
 );
 
