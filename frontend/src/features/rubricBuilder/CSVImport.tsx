@@ -1,14 +1,14 @@
-import React, { useState, useRef } from "react";
+import React, { useRef, useState } from "react";
 import { importCsv, VERSION_ONE, VERSION_TWO } from "@utils";
-import { Dialog } from "@components";
+import { Dialog, PaletteActionButton } from "@components";
 import { Criteria, Rubric } from "palette-types";
 
 interface CSVUploadProps {
-  rubric: Rubric | undefined;
-  setRubric: React.Dispatch<React.SetStateAction<Rubric | undefined>>;
+  rubric: Rubric;
+  setRubric: React.Dispatch<React.SetStateAction<Rubric>>;
 }
 
-export const CSVUpload: React.FC<CSVUploadProps> = ({ setRubric }) => {
+export const CSVImport: React.FC<CSVUploadProps> = ({ setRubric }) => {
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -39,9 +39,7 @@ export const CSVUpload: React.FC<CSVUploadProps> = ({ setRubric }) => {
    * Generates a set of the current criteria descriptions stored within the component state
    * to use for checking duplicate entries.
    */
-  const buildCriteriaDescriptionSet = (
-    rubric: Rubric | undefined,
-  ): Set<string> =>
+  const buildCriteriaDescriptionSet = (rubric: Rubric): Set<string> =>
     new Set(
       (rubric?.criteria || []).map((criterion) =>
         criterion.description.trim().toLowerCase(),
@@ -73,7 +71,7 @@ export const CSVUpload: React.FC<CSVUploadProps> = ({ setRubric }) => {
             pointsPossible:
               prevRubric.pointsPossible +
               uniqueCriteria.reduce(
-                (sum, criterion) => sum + criterion.points,
+                (sum, criterion) => sum + criterion.pointsPossible,
                 0,
               ),
           }
@@ -81,10 +79,11 @@ export const CSVUpload: React.FC<CSVUploadProps> = ({ setRubric }) => {
             title: "Imported Rubric",
             criteria: uniqueCriteria,
             pointsPossible: uniqueCriteria.reduce(
-              (sum, criterion) => sum + criterion.points,
+              (sum, criterion) => sum + criterion.pointsPossible,
               0,
             ),
             key: "placeholder-key", // Placeholder
+            id: "placeholder-id",
           };
     });
   };
@@ -94,13 +93,12 @@ export const CSVUpload: React.FC<CSVUploadProps> = ({ setRubric }) => {
   };
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <button
+    <div className="flex flex-col items-center">
+      <PaletteActionButton
         onClick={() => setShowVersionModal(true)}
-        className="bg-blue-600 text-white font-bold rounded-lg py-2 px-4 transition duration-300 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
-        Import CSV
-      </button>
+        title={"Import CSV"}
+        color={"BLUE"}
+      />
       <Dialog
         isOpen={showVersionModal}
         onClose={() => setShowVersionModal(false)}
@@ -160,5 +158,3 @@ export const CSVUpload: React.FC<CSVUploadProps> = ({ setRubric }) => {
     </div>
   );
 };
-
-export default CSVUpload;

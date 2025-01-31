@@ -95,6 +95,7 @@ const mapToPaletteSubmission = (
     },
     comments: transformComments(),
     rubricAssessment: [], //todo
+    workflowState: canvasResponse.workflow_state, // status of the submission
     graded: canvasResponse?.graded_at || false,
     gradedBy: canvasResponse.grader_id,
     late: canvasResponse.late || undefined,

@@ -24,8 +24,8 @@ import {
   ModalChoiceDialog,
   NoAssignmentSelected,
   NoCourseSelected,
+  PaletteActionButton,
   PopUp,
-  SaveButton,
 } from "@components";
 
 import { DndContext, DragEndEvent } from "@dnd-kit/core";
@@ -39,7 +39,7 @@ import { useFetch } from "@hooks";
 import { createCriterion, createRubric } from "@utils";
 
 import { Criteria, PaletteAPIResponse, Rubric, Template } from "palette-types";
-import { CSVExport, CSVUpload } from "@features";
+import { CSVExport, CSVImport } from "@features";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAssignment, useCourse } from "@context";
 
@@ -56,7 +56,7 @@ export function RubricBuilderMain(): ReactElement {
    */
 
   // active rubric being edited
-  const [rubric, setRubric] = useState<Rubric | undefined>(getInitialRubric());
+  const [rubric, setRubric] = useState<Rubric>(getInitialRubric());
   // tracks which criterion card is displaying the detailed view (limited to one at a time)
   const [activeCriterionIndex, setActiveCriterionIndex] = useState(-1);
   // result of hook checking if active assignment has an existing rubric
@@ -347,7 +347,9 @@ export function RubricBuilderMain(): ReactElement {
     return (
       rubric.criteria.reduce(
         (sum, criterion) =>
-          isNaN(criterion.points) ? sum : sum + criterion.points,
+          isNaN(criterion.pointsPossible)
+            ? sum
+            : sum + criterion.pointsPossible,
         0, // init sum to 0
       ) ?? 0 // fallback value if criterion is undefined
     );
@@ -557,12 +559,12 @@ export function RubricBuilderMain(): ReactElement {
         onSubmit={(event) => event.preventDefault()}
       >
         <h1 className="font-extrabold text-5xl mb-2 text-center">
-          Create a new rubric
+          Canvas Rubric Builder
         </h1>
         <div className="flex justify-between items-center">
           {/* Import CSV */}
-          <div className={"flex gap-2"}>
-            <CSVUpload rubric={rubric} setRubric={setRubric} />
+          <div className={"flex gap-2 items-center"}>
+            <CSVImport rubric={rubric} setRubric={setRubric} />
 
             {/* Export CSV */}
             <CSVExport rubric={rubric} />
@@ -595,18 +597,16 @@ export function RubricBuilderMain(): ReactElement {
         </div>
 
         <div className="grid gap-4 mt-6">
-          <button
-            className="transition-all ease-in-out duration-300 bg-blue-600 text-white font-bold rounded-lg py-2 px-4
-                     hover:bg-blue-700 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          <PaletteActionButton
+            title={"Add Criteria"}
             onClick={handleAddCriteria}
-            type={"button"}
-          >
-            Add Criteria
-          </button>
+            color={"BLUE"}
+          />
 
-          <SaveButton
-            title={"Rubric"}
+          <PaletteActionButton
+            title={"Save Rubric"}
             onClick={(event) => void handleSubmitRubric(event)}
+            color={"GREEN"}
           />
         </div>
       </form>

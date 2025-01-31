@@ -1,17 +1,39 @@
-import { Submission } from "palette-types";
+import { Rubric, Submission } from "palette-types";
 import { IndividualSubmission, ProgressBar } from "@features";
+import { ProjectGradingView } from "../projectGrading/ProjectGradingView.tsx";
+import { useState } from "react";
 
 export function GroupSubmissions({
   groupName,
   progress,
   isExpanded,
   submissions,
+  rubric,
 }: {
   groupName: string;
   progress: number;
   isExpanded: boolean;
   submissions: Submission[];
+  rubric: Rubric;
 }) {
+  // grading popup state (submissions are already filtered by group)
+  const [isGradingViewOpen, setGradingViewOpen] = useState<boolean>(false);
+
+  const handleGradingViewClose = () => {
+    setGradingViewOpen(false);
+  };
+
+  const toggleGradingView = () => {
+    if (!rubric) {
+      alert(
+        "Assignment does not have a rubric for grading. Create a rubric and try again!",
+      );
+      return;
+    }
+
+    setGradingViewOpen(true);
+  };
+
   const renderGroupHeader = () => {
     return (
       <div
@@ -25,7 +47,7 @@ export function GroupSubmissions({
           className={
             "bg-white rounded-xl px-2 py-1 relative top-1 hover:bg-blue-400 flex col-start-3 justify-center"
           }
-          onClick={() => alert(`Grading submissions from ${groupName}!`)}
+          onClick={toggleGradingView}
           title={"Grade this Group"}
         >
           <p className={"text-black text-2xl font-bold "}>Grade</p>
@@ -54,6 +76,13 @@ export function GroupSubmissions({
     >
       {renderGroupHeader()}
       {isExpanded && renderSubmissions()}
+      <ProjectGradingView
+        isOpen={isGradingViewOpen}
+        groupName={"Group 99"}
+        submissions={submissions}
+        rubric={rubric}
+        onClose={handleGradingViewClose}
+      />
     </div>
   );
 }
