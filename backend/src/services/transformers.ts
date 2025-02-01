@@ -94,7 +94,7 @@ const mapToPaletteSubmission = (
       name: canvasResponse.group?.name || "No Group",
     },
     comments: transformComments(),
-    rubricAssessment: [], //todo
+    rubricAssessment: canvasResponse.rubric_assessment,
     workflowState: canvasResponse.workflow_state, // status of the submission
     graded: canvasResponse?.graded_at || false,
     gradedBy: canvasResponse.grader_id,
