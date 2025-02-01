@@ -12,10 +12,10 @@ export * from "./grading/gradingDashboard/StatusIcons.tsx";
 export * from "./grading/gradingDashboard/SubmissionsDashboard.tsx";
 
 // rubric builder exports
-export * from "./rubricBuilder/CriteriaInput";
-export * from "./rubricBuilder/CSVExport";
-export * from "./rubricBuilder/CSVImport.tsx";
-export * from "./rubricBuilder/RatingInput";
+export * from "./rubricBuilder/CriteriaCard.tsx";
+export * from "./rubricBuilder/csv/CSVExport.tsx";
+export * from "./rubricBuilder/csv/CSVImport.tsx";
+export * from "./rubricBuilder/RatingCard.tsx";
 export * from "./rubricBuilder/RubricBuilderMain";
 
 // home exports
