@@ -471,6 +471,22 @@ export function RubricBuilderMain(): ReactElement {
     }
   };
 
+  const updateTemplate = async (template: Template) => {
+    setUpdatingTemplate(template);
+    const updatedTemplate = {
+      ...template,
+      usageCount: template.usageCount + 1,
+      lastUsed: new Date().toISOString(),
+    };
+    setUpdatingTemplate(updatedTemplate);
+    const response = await putTemplate();
+    if (response.success) {
+      console.log("template updated successfully");
+    } else {
+      console.error("error updating template", response.error);
+    }
+  };
+
   const handleImportTemplate = (template: Template) => {
     console.log("import template in rubric builder main");
     if (!rubric) return;
@@ -516,13 +532,19 @@ export function RubricBuilderMain(): ReactElement {
       );
     }
 
-    setRubric(
-      (prevRubric) =>
-        ({
-          ...(prevRubric ?? createRubric()),
-          criteria: [...(prevRubric?.criteria ?? []), ...unique],
-        }) as Rubric,
-    );
+    updateTemplate(template)
+      .then(() => {
+        setRubric(
+          (prevRubric) =>
+            ({
+              ...(prevRubric ?? createRubric()),
+              criteria: [...(prevRubric?.criteria ?? []), ...unique],
+            }) as Rubric,
+        );
+      })
+      .catch((error) => {
+        console.error("error updating template", error);
+      });
   };
 
   /**
