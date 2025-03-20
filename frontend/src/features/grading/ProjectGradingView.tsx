@@ -17,6 +17,7 @@ import {
   PaletteEye,
 } from "@components";
 import { useChoiceDialog } from "../../context/DialogContext.tsx";
+import { calculateSubmissionTotal } from "../../utils/SubmissionUtils.ts";
 
 type ProjectGradingViewProps = {
   groupName: string;
@@ -408,7 +409,7 @@ export function ProjectGradingView({
     return (
       <div className="flex flex-col gap-2">
         <textarea
-          className="w-1/3 min-h-12 max-h-32 text-black font-bold rounded px-2 py-1 bg-gray-300 overflow-auto 
+          className="w-1/3 min-h-12 max-h-32 text-black font-bold rounded px-2 py-1 bg-gray-300 overflow-auto
           scrollbar-thin scrollbar-thumb-gray-500 scrollbar-track-gray-800"
           onChange={(e) => setGroupFeedback(e.target.value)}
           value={groupFeedback}
@@ -441,7 +442,7 @@ export function ProjectGradingView({
     return (
       <div className="w-full">
         <textarea
-          className="w-full min-h-12 max-h-32 text-black font-bold rounded px-2 py-1 bg-gray-300 overflow-auto 
+          className="w-full min-h-12 max-h-32 text-black font-bold rounded px-2 py-1 bg-gray-300 overflow-auto
           scrollbar-thin scrollbar-thumb-gray-500 scrollbar-track-gray-800"
           onChange={(e) => {
             setIndividualFeedbacks((prev) => ({
@@ -487,7 +488,7 @@ export function ProjectGradingView({
     return (
       <div className="flex flex-col w-full gap-2 ">
         <textarea
-          className="w-full min-h-12 max-h-32 text-black font-bold rounded px-2 py-1 bg-gray-300 overflow-auto 
+          className="w-full min-h-12 max-h-32 text-black font-bold rounded px-2 py-1 bg-gray-300 overflow-auto
           scrollbar-thin scrollbar-thumb-gray-500 scrollbar-track-gray-800"
           onChange={(e) =>
             setCriterionComments((prev) => ({
@@ -527,7 +528,10 @@ export function ProjectGradingView({
     return (
       <div className="flex flex-col w-full items-center gap-2">
         <div className="flex items-center justify-center gap-4 text-center">
-          <p>{`${submission.user.name} (${submission.user.asurite})`}</p>
+          <div className={"flex justify-between"}>
+            <p>{`${submission.user.name} (${submission.user.asurite})`}</p>
+            <p>{`Canvas Score ${calculateSubmissionTotal(submission)}`}</p>
+          </div>
           <PaletteBrush
             onClick={() => {
               setActiveStudentId(
@@ -618,6 +622,7 @@ export function ProjectGradingView({
                   className="border border-gray-500 px-4 py-2"
                 >
                   {renderStudentHeaderControls(submission)}
+                  {/*  todo add back the submission total*/}
                 </th>
               ))}
             </tr>
