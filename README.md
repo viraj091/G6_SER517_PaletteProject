@@ -1,0 +1,1 @@
+# G6_SER517_PaletteProject
