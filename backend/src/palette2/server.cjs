@@ -2,7 +2,7 @@
 
 // Palette 2.0 Server Startup
 require('dotenv').config();
-const PaletteApp = require('./app-setup.js');
+const PaletteApp = require('./app-setup.cjs');
 
 async function startServer() {
     const app = new PaletteApp();

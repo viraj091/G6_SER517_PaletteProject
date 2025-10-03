@@ -1,6 +1,6 @@
 // Offline-First Grading Service
 const { v4: uuidv4 } = require('uuid');
-const DatabaseManager = require('./database_manager');
+const DatabaseManager = require('./database_manager.cjs');
 
 class GradingService {
     constructor(dbManager, syncService) {

@@ -6,7 +6,7 @@
   },
   "scripts": {
     "dev": "concurrently \"npm run dev -w frontend\" \"npm run dev -w backend\"",
-    "dev:palette2": "node src/server.js",
+    "dev:palette2": "node backend/src/palette2/server.cjs",
     "build": "npm run build -w palette-types && npm run build -w backend",
     "build:all": "npm run build --workspaces",
     "clean": "npm run clean --workspaces",
@@ -18,16 +18,5 @@
   },
   "devDependencies": {
     "concurrently": "^9.0.1"
-  },
-  "dependencies": {
-    "sqlite3": "^5.1.6",
-    "sqlite": "^5.1.1",
-    "axios": "^1.6.0",
-    "express": "^4.18.2",
-    "express-session": "^1.17.3",
-    "connect-sqlite3": "^0.9.13",
-    "uuid": "^9.0.1",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1"
   }
 }

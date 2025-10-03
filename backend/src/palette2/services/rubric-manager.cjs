@@ -1,6 +1,6 @@
 // Rubric Manager - Handles stable rubric creation and editing
 const { v4: uuidv4 } = require('uuid');
-const DatabaseManager = require('./database_manager');
+const DatabaseManager = require('./database_manager.cjs');
 
 class RubricManager {
     constructor(dbManager) {

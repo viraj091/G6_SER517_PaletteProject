@@ -4,11 +4,11 @@ const path = require('path');
 const cors = require('cors');
 
 // Import new services
-const DatabaseManager = require('./services/database_manager.js');
-const CanvasAuthService = require('./services/authentication_service.js');
-const CanvasSyncService = require('./services/canvas_sync_service.js');
-const GradingService = require('./services/grading_service.js');
-const RubricManager = require('./services/rubric-manager.js');
+const DatabaseManager = require('./services/database_manager.cjs');
+const CanvasAuthService = require('./services/authentication_service.cjs');
+const CanvasSyncService = require('./services/canvas_sync_service.cjs');
+const GradingService = require('./services/grading_service.cjs');
+const RubricManager = require('./services/rubric-manager.cjs');
 
 class PaletteApp {
     constructor() {

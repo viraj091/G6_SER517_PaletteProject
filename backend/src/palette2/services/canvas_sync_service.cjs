@@ -1,6 +1,6 @@
 // Canvas Synchronization Service - Handles offline/online sync
 const axios = require('axios');
-const DatabaseManager = require('./database_manager');
+const DatabaseManager = require('./database_manager.cjs');
 
 class CanvasSyncService {
     constructor(baseUrl, accessToken, dbManager) {
