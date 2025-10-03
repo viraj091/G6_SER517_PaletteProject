@@ -1,6 +1,11 @@
 {
   "name": "palette",
   "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "palette-types"
+  ],
   "engines": {
     "node": ">=18"
   },
