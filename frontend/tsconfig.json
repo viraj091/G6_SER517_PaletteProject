@@ -12,6 +12,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "sourceMap": true,
+    "noEmit": true,
     "allowImportingTsExtensions": true,
     "lib": ["dom", "ESNext"],
     "types": ["node", "react", "vite/client", "vitest"],
