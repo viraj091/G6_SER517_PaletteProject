@@ -13,7 +13,7 @@
     "dev": "concurrently \"npm run dev -w frontend\" \"npm run dev -w backend\"",
     "dev:palette2": "node backend/src/palette2/server.cjs",
     "build": "npm run build -w palette-types && npm run build -w backend",
-    "build:all": "npm run build --workspaces",
+    "build:all": "npm run build -w palette-types && npm run build -w backend && npm run build -w frontend",
     "clean": "npm run clean --workspaces",
     "lint": "eslint . ",
     "prettier:fix": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
