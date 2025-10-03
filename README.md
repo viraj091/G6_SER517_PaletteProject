@@ -14,7 +14,6 @@ An interactive rubric builder and grading assistant tool to improve the group pr
     - [Generating a personal token:](#generating-a-personal-token)
     - [Using your Canvas token with Palette:](#using-your-canvas-token-with-palette)
 - [Startup Instructions - Easy](#startup-instructions---easy)
-
   - [Update and Run](#update-and-run)
   - [Run](#run)
 
@@ -25,6 +24,172 @@ An interactive rubric builder and grading assistant tool to improve the group pr
   - [Stopping Containers](#stopping-containers)
 - [Usage](#usage)
 - [Troubleshooting](#troubleshooting)
+
+---
+
+## 🚀 Palette 2.0 Setup Guide (Latest Update)
+
+### Quick Start for Team Members
+
+Follow these steps to pull the latest changes and run Palette 2.0 with the new backend integration:
+
+#### Step 1: Pull Latest Changes from GitHub
+
+```bash
+# Navigate to your palette project directory
+cd palette
+
+# Pull the latest changes from main branch
+git pull origin main
+
+# Verify you have the latest commit
+git log --oneline -1
+# Should show: "Merge remote changes and resolve conflicts" or newer
+```
+
+#### Step 2: Set Up Environment Variables
+
+Create a `.env` file in the project root with your Canvas personal access token:
+
+```bash
+# Create .env file (use copy command on Windows)
+copy .env.example .env
+
+# Or manually create .env file and add:
+CANVAS_PERSONAL_TOKEN=your_canvas_token_here
+CANVAS_BASE_URL=https://canvas.asu.edu
+PORT=3000
+SESSION_SECRET=your_secret_key_here
+```
+
+**To get your Canvas token:**
+
+1. Go to Canvas → Account → Settings
+2. Scroll to "Approved Integrations"
+3. Click "+ New Access Token"
+4. Copy the token and paste it in `.env`
+
+#### Step 3: Install Dependencies
+
+```bash
+# Install root dependencies
+npm install
+
+# Install frontend dependencies
+cd frontend
+npm install
+cd ..
+```
+
+#### Step 4: Run Palette 2.0
+
+**Option A: Run Both Servers Separately (Recommended for Development)**
+
+Open two terminal windows:
+
+**Terminal 1 - Backend Server:**
+
+```bash
+npm run dev:palette2
+```
+
+You should see:
+
+```
+🎨 Palette 2.0 running on http://localhost:3000
+🔧 Development authentication enabled
+```
+
+**Terminal 2 - Frontend Server:**
+
+```bash
+cd frontend
+npm run dev
+```
+
+You should see:
+
+```
+➜  Local:   http://localhost:5173/
+```
+
+**Option B: Quick Start (if available)**
+
+```bash
+npm run dev
+```
+
+#### Step 5: Verify Everything Works
+
+1. Open your browser and go to: **http://localhost:5173**
+2. The application should load without authentication errors
+3. Navigate to course selection - you should see your courses load automatically
+4. Select a course - assignments should load without errors
+
+### ✅ What's New in Palette 2.0
+
+- ✅ **Auto-authentication**: Automatic Canvas token authentication from environment variables
+- ✅ **New API Endpoints**:
+  - `/api/courses` - Fetch all courses
+  - `/api/courses/:id/assignments` - Fetch course assignments
+- ✅ **Vite Proxy Configuration**: Seamless frontend-backend communication
+- ✅ **Session Management**: Persistent authentication across requests
+- ✅ **Backend Services**: Canvas sync, database manager, grading service, rubric manager
+
+### 🔧 Troubleshooting
+
+**Problem: "Authentication required" error**
+
+- Solution: Make sure your `.env` file contains a valid `CANVAS_PERSONAL_TOKEN`
+- Verify the token hasn't expired in Canvas settings
+
+**Problem: "Failed to get assignments" error**
+
+- Solution: Ensure backend server is running on port 3000
+- Check that frontend proxy is configured (already done in vite.config.ts)
+
+**Problem: Port already in use**
+
+- Solution: Kill existing processes:
+  - **Windows**: `netstat -ano | findstr :3000` then `taskkill /PID <pid> /F`
+  - **Mac/Linux**: `lsof -ti:3000 | xargs kill -9`
+
+**Problem: Dependencies not installing**
+
+- Solution: Delete `node_modules` and `package-lock.json`, then run `npm install` again
+
+**Problem: Database errors**
+
+- Solution: The database files are included. If issues persist, delete `data/*.db` files and restart the backend
+
+### 📁 Project Structure
+
+```
+palette/
+├── src/
+│   ├── app-setup.js              # Main Express app configuration
+│   ├── server.js                 # Server entry point
+│   └── services/
+│       ├── authentication_service.js  # Canvas OAuth & auth
+│       ├── canvas_sync_service.js     # Canvas API sync
+│       ├── database_manager.js        # SQLite database
+│       ├── grading_service.js         # Grading logic
+│       └── rubric-manager.js          # Rubric management
+├── frontend/                      # React + Vite frontend
+├── data/                          # SQLite databases
+├── .env                           # Environment variables (create this!)
+└── package.json                   # Dependencies
+```
+
+### 🎯 Backend API Endpoints
+
+- `GET /api/courses` - Get all Canvas courses
+- `GET /api/courses/:id/assignments` - Get course assignments
+- `GET /api/user/settings` - Get user settings
+- `POST /auth/token` - Authenticate with personal token
+- `GET /health` - Health check endpoint
+
+All API endpoints support auto-authentication via environment token!
 
 ---
 
