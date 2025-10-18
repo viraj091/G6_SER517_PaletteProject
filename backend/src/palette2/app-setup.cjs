@@ -214,7 +214,9 @@ class PaletteApp {
                 req.path === '/health' ||
                 req.path.startsWith('/settings') ||
                 req.path.startsWith('/user/settings') ||
-                req.path.startsWith('/courses')) {
+                req.path.startsWith('/courses') ||
+                req.path.startsWith('/templates') ||
+                req.path.startsWith('/tags')) {
                 return next();
             }
             this.authService.requireAuth(req, res, next);
@@ -226,7 +228,9 @@ class PaletteApp {
                 req.path === '/health' ||
                 req.path.startsWith('/settings') ||
                 req.path.startsWith('/courses') ||
-                req.path.startsWith('/user/settings')) {
+                req.path.startsWith('/user/settings') ||
+                req.path.startsWith('/templates') ||
+                req.path.startsWith('/tags')) {
                 return next();
             }
             await this.authService.getValidAccessToken(req, res, next);
@@ -539,7 +543,576 @@ class PaletteApp {
             }
         });
 
+        // Frontend compatibility - /api/courses/:course_id/rubrics/:assignment_id endpoint (CREATE)
+        router.post('/api/courses/:course_id/rubrics/:assignment_id', async (req, res) => {
+            try {
+                console.log(`✨ CREATE rubric request - course: ${req.params.course_id}, assignment: ${req.params.assignment_id}`);
+                console.log('✨ Request body:', JSON.stringify(req.body, null, 2));
 
+                // Auto-authenticate if needed
+                if (!req.session.user && process.env.CANVAS_PERSONAL_TOKEN) {
+                    try {
+                        const userInfo = await this.authService.getUserInfo(process.env.CANVAS_PERSONAL_TOKEN);
+                        req.session.user = {
+                            id: userInfo.id,
+                            name: userInfo.name,
+                            email: userInfo.email,
+                            canvas_id: userInfo.id
+                        };
+                        req.session.tokens = {
+                            access_token: this.authService.encryptToken(process.env.CANVAS_PERSONAL_TOKEN),
+                            token_type: 'personal',
+                            expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                        };
+                        console.log('🔐 Auto-authenticated for rubric creation');
+                    } catch (error) {
+                        console.log('⚠️  Auto-authentication failed:', error.message);
+                    }
+                }
+
+                if (!req.session.user) {
+                    return res.status(401).json({
+                        success: false,
+                        error: 'Authentication required'
+                    });
+                }
+
+                // Create rubric in local database
+                const rubricData = {
+                    name: req.body.title || 'Untitled Rubric',
+                    description: req.body.description || '',
+                    points_possible: req.body.points_possible || 0,
+                    criteria: req.body.criteria || []
+                };
+
+                const rubricId = await this.rubricManager.createRubric(rubricData, req.session.user.id);
+                const rubric = await this.db.getRubricTemplate(rubricId);
+
+                // Store assignment-rubric mapping
+                const now = new Date().toISOString();
+                await this.db.run(`
+                    INSERT OR REPLACE INTO assignment_rubrics
+                    (assignment_id, rubric_id, course_id, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                `, [req.params.assignment_id, rubricId, req.params.course_id, now, now]);
+
+                console.log(`✅ Created rubric: ${rubricData.name} (${rubricId}) for assignment ${req.params.assignment_id}`);
+
+                res.json({
+                    success: true,
+                    message: 'New rubric created successfully',
+                    data: rubric
+                });
+            } catch (error) {
+                console.error('Error creating rubric:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // Frontend compatibility - /api/courses/:course_id/rubrics/:rubric_id/:assignment_id endpoint (UPDATE)
+        router.put('/api/courses/:course_id/rubrics/:rubric_id/:assignment_id', async (req, res) => {
+            try {
+                console.log(`📝 UPDATE rubric request - course: ${req.params.course_id}, rubric: ${req.params.rubric_id}, assignment: ${req.params.assignment_id}`);
+                console.log('📝 Request body:', JSON.stringify(req.body, null, 2));
+
+                // Auto-authenticate if needed
+                if (!req.session.user && process.env.CANVAS_PERSONAL_TOKEN) {
+                    try {
+                        const userInfo = await this.authService.getUserInfo(process.env.CANVAS_PERSONAL_TOKEN);
+                        req.session.user = {
+                            id: userInfo.id,
+                            name: userInfo.name,
+                            email: userInfo.email,
+                            canvas_id: userInfo.id
+                        };
+                        req.session.tokens = {
+                            access_token: this.authService.encryptToken(process.env.CANVAS_PERSONAL_TOKEN),
+                            token_type: 'personal',
+                            expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                        };
+                        console.log('🔐 Auto-authenticated for rubric update');
+                    } catch (error) {
+                        console.log('⚠️  Auto-authentication failed:', error.message);
+                    }
+                }
+
+                if (!req.session.user) {
+                    return res.status(401).json({
+                        success: false,
+                        error: 'Authentication required'
+                    });
+                }
+
+                // Check if this is actually a CREATE request (rubric_id is undefined/null/0)
+                const rubricIdParam = req.params.rubric_id;
+                const isNewRubric = !rubricIdParam || rubricIdParam === 'undefined' || rubricIdParam === 'null' || req.body.id === 0;
+
+                if (isNewRubric) {
+                    console.log('🔄 Detected new rubric, redirecting to CREATE');
+
+                    // Create rubric in local database
+                    const rubricData = {
+                        name: req.body.title || 'Untitled Rubric',
+                        description: req.body.description || '',
+                        points_possible: req.body.pointsPossible || 0,
+                        criteria: req.body.criteria || []
+                    };
+
+                    const rubricId = await this.rubricManager.createRubric(rubricData, req.session.user.id);
+                    const rubric = await this.db.getRubricTemplate(rubricId);
+
+                    // Store assignment-rubric mapping
+                    const now = new Date().toISOString();
+                    await this.db.run(`
+                        INSERT OR REPLACE INTO assignment_rubrics
+                        (assignment_id, rubric_id, course_id, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    `, [req.params.assignment_id, rubricId, req.params.course_id, now, now]);
+
+                    console.log(`✅ Created rubric: ${rubricData.name} (${rubricId}) for assignment ${req.params.assignment_id}`);
+
+                    return res.json({
+                        success: true,
+                        message: 'New rubric created successfully',
+                        data: rubric
+                    });
+                }
+
+                // Update existing rubric in local database
+                const updates = {
+                    name: req.body.title,
+                    description: req.body.description,
+                    points_possible: req.body.pointsPossible,
+                    criteria: req.body.criteria
+                };
+
+                const rubricId = await this.rubricManager.editRubric(
+                    rubricIdParam,
+                    updates,
+                    req.session.user.id
+                );
+                const rubric = await this.db.getRubricTemplate(rubricId);
+
+                console.log(`✅ Updated rubric: ${rubricId} for assignment ${req.params.assignment_id}`);
+
+                res.json({
+                    success: true,
+                    message: 'Rubric updated successfully!',
+                    data: rubric
+                });
+            } catch (error) {
+                console.error('Error updating rubric:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // Frontend compatibility - /api/courses/:course_id/rubrics/:rubric_id endpoint (GET)
+        router.get('/api/courses/:course_id/rubrics/:rubric_id', async (req, res) => {
+            try {
+                const rubric = await this.db.getRubricTemplate(req.params.rubric_id);
+                if (!rubric) {
+                    return res.status(404).json({
+                        success: false,
+                        error: 'Rubric not found'
+                    });
+                }
+                res.json({
+                    success: true,
+                    message: 'Here is the rubric',
+                    data: rubric
+                });
+            } catch (error) {
+                console.error('Error fetching rubric:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // GET rubric by assignment ID (for RubricContext compatibility)
+        router.get('/api/courses/:course_id/assignments/:assignment_id/rubric', async (req, res) => {
+            try {
+                console.log(`🔍 Fetching rubric for assignment ${req.params.assignment_id}`);
+
+                // Look up the rubric ID from the assignment mapping
+                const mapping = await this.db.get(`
+                    SELECT rubric_id FROM assignment_rubrics
+                    WHERE assignment_id = ? AND course_id = ?
+                `, [req.params.assignment_id, req.params.course_id]);
+
+                if (!mapping) {
+                    return res.status(404).json({
+                        success: false,
+                        error: 'No rubric found for this assignment'
+                    });
+                }
+
+                // Fetch the rubric
+                const rubric = await this.db.getRubricTemplate(mapping.rubric_id);
+                if (!rubric) {
+                    return res.status(404).json({
+                        success: false,
+                        error: 'Rubric not found'
+                    });
+                }
+
+                console.log(`✅ Found rubric: ${rubric.name} (${rubric.id})`);
+
+                // Transform database format to frontend format
+                const frontendRubric = {
+                    id: rubric.canvas_id || -1, // Use canvas_id if available, otherwise -1 for local rubrics (truthy value)
+                    title: rubric.name,
+                    pointsPossible: rubric.points_possible || 0,
+                    key: rubric.id, // Use the UUID as the React key
+                    criteria: (rubric.criteria || []).map(criterion => ({
+                        id: criterion.canvas_criterion_id || '',
+                        description: criterion.description,
+                        longDescription: criterion.long_description || '',
+                        pointsPossible: criterion.points || 0,
+                        key: criterion.id, // Use UUID as React key
+                        ratings: (criterion.ratings || []).map(rating => ({
+                            id: rating.canvas_rating_id || '',
+                            description: rating.description,
+                            longDescription: rating.long_description || '',
+                            points: rating.points || 0,
+                            key: rating.id // Use UUID as React key
+                        }))
+                    }))
+                };
+
+                console.log('📤 Returning transformed rubric data:', JSON.stringify(frontendRubric, null, 2));
+
+                res.json({
+                    success: true,
+                    message: 'Rubric found',
+                    data: frontendRubric
+                });
+            } catch (error) {
+                console.error('Error fetching rubric by assignment:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // ========================
+        // TEMPLATE ENDPOINTS
+        // ========================
+
+        // GET all templates
+        router.get('/api/templates', async (req, res) => {
+            try {
+                const templates = await this.db.all('SELECT * FROM templates ORDER BY last_used DESC, created_at DESC');
+
+                // Parse JSON fields
+                const parsedTemplates = templates.map(template => ({
+                    id: template.id,
+                    key: template.key,
+                    title: template.title,
+                    description: template.description || '',
+                    points: template.points || 0,
+                    criteria: JSON.parse(template.criteria_json || '[]'),
+                    tags: JSON.parse(template.tags_json || '[]'),
+                    quickStart: !!template.quick_start,
+                    saved: !!template.saved,
+                    createdAt: template.created_at,
+                    lastUsed: template.last_used || template.created_at,
+                    usageCount: template.usage_count || 0
+                }));
+
+                res.json({
+                    success: true,
+                    message: 'Templates fetched successfully!',
+                    data: parsedTemplates
+                });
+            } catch (error) {
+                console.error('Error fetching templates:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // POST create template
+        router.post('/api/templates', async (req, res) => {
+            try {
+                console.log('📝 CREATE template request:', req.body);
+
+                const templateData = req.body;
+                const now = new Date().toISOString();
+
+                // Check if template with same key already exists
+                const existing = await this.db.get('SELECT id FROM templates WHERE key = ?', [templateData.key]);
+
+                if (existing) {
+                    return res.status(409).json({
+                        success: false,
+                        error: 'Template with this key already exists'
+                    });
+                }
+
+                // Insert template (always set saved=true when successfully saved to database)
+                const result = await this.db.run(`
+                    INSERT INTO templates
+                    (key, title, description, points, criteria_json, tags_json, quick_start, saved, created_at, last_used, usage_count, created_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                    templateData.key,
+                    templateData.title,
+                    templateData.description || '',
+                    templateData.points || 0,
+                    JSON.stringify(templateData.criteria || []),
+                    JSON.stringify(templateData.tags || []),
+                    templateData.quickStart ? 1 : 0,
+                    1,  // Always set saved=true when persisted to database
+                    now,
+                    templateData.lastUsed || now,
+                    templateData.usageCount || 0,
+                    req.session.user?.id || 'anonymous'
+                ]);
+
+                console.log(`✅ Created template: ${templateData.title} (${result.lastID})`);
+
+                res.json({
+                    success: true,
+                    message: 'Template created successfully!',
+                    data: { id: result.lastID, ...templateData }
+                });
+            } catch (error) {
+                console.error('Error creating template:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // PUT update template
+        router.put('/api/templates', async (req, res) => {
+            try {
+                console.log('📝 UPDATE template request:', req.body);
+
+                const templateData = req.body;
+
+                // Find template by key
+                const existing = await this.db.get('SELECT id FROM templates WHERE key = ?', [templateData.key]);
+
+                if (!existing) {
+                    return res.status(404).json({
+                        success: false,
+                        error: 'Template not found'
+                    });
+                }
+
+                // Update template (always set saved=true when successfully saved to database)
+                await this.db.run(`
+                    UPDATE templates
+                    SET title = ?,
+                        description = ?,
+                        points = ?,
+                        criteria_json = ?,
+                        tags_json = ?,
+                        quick_start = ?,
+                        saved = ?,
+                        last_used = ?,
+                        usage_count = ?
+                    WHERE key = ?
+                `, [
+                    templateData.title,
+                    templateData.description || '',
+                    templateData.points || 0,
+                    JSON.stringify(templateData.criteria || []),
+                    JSON.stringify(templateData.tags || []),
+                    templateData.quickStart ? 1 : 0,
+                    1,  // Always set saved=true when persisted to database
+                    templateData.lastUsed || new Date().toISOString(),
+                    templateData.usageCount || 0,
+                    templateData.key
+                ]);
+
+                console.log(`✅ Updated template: ${templateData.title}`);
+
+                res.json({
+                    success: true,
+                    message: 'Template updated successfully!',
+                    data: templateData
+                });
+            } catch (error) {
+                console.error('Error updating template:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // DELETE template
+        router.delete('/api/templates', async (req, res) => {
+            try {
+                console.log('🗑️ DELETE template request:', req.body);
+
+                const templateKey = req.body.key;
+
+                if (!templateKey) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Template key is required'
+                    });
+                }
+
+                const result = await this.db.run('DELETE FROM templates WHERE key = ?', [templateKey]);
+
+                if (result.changes === 0) {
+                    return res.status(404).json({
+                        success: false,
+                        error: 'Template not found'
+                    });
+                }
+
+                console.log(`✅ Deleted template with key: ${templateKey}`);
+
+                res.json({
+                    success: true,
+                    message: 'Template deleted successfully!'
+                });
+            } catch (error) {
+                console.error('Error deleting template:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // ========================
+        // TAG ENDPOINTS
+        // ========================
+
+        // GET all tags
+        router.get('/api/tags', async (req, res) => {
+            try {
+                const tags = await this.db.all('SELECT * FROM tags ORDER BY usage_count DESC, name ASC');
+
+                // Format tags
+                const parsedTags = tags.map(tag => ({
+                    key: tag.key,
+                    name: tag.name,
+                    color: tag.color || '#808080',
+                    description: tag.description || '',
+                    createdAt: tag.created_at,
+                    lastUsed: tag.last_used,
+                    usageCount: tag.usage_count || 0
+                }));
+
+                res.json({
+                    success: true,
+                    message: 'Tags fetched successfully!',
+                    data: parsedTags
+                });
+            } catch (error) {
+                console.error('Error fetching tags:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // POST create tag
+        router.post('/api/tags', async (req, res) => {
+            try {
+                console.log('📝 CREATE tag request:', req.body);
+
+                const tagData = req.body;
+                const now = new Date().toISOString();
+
+                // Check if tag with same key already exists
+                const existing = await this.db.get('SELECT id FROM tags WHERE key = ?', [tagData.key]);
+
+                if (existing) {
+                    return res.status(409).json({
+                        success: false,
+                        error: 'Tag with this key already exists'
+                    });
+                }
+
+                // Insert tag
+                const result = await this.db.run(`
+                    INSERT INTO tags
+                    (key, name, color, description, created_at, last_used, usage_count)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                `, [
+                    tagData.key,
+                    tagData.name,
+                    tagData.color || '#808080',
+                    tagData.description || '',
+                    now,
+                    tagData.lastUsed || null,
+                    tagData.usageCount || 0
+                ]);
+
+                console.log(`✅ Created tag: ${tagData.name} (${result.lastID})`);
+
+                res.json({
+                    success: true,
+                    message: 'Tag created successfully!',
+                    data: { id: result.lastID, ...tagData }
+                });
+            } catch (error) {
+                console.error('Error creating tag:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // DELETE tag
+        router.delete('/api/tags', async (req, res) => {
+            try {
+                console.log('🗑️ DELETE tag request:', req.body);
+
+                const tagKey = req.body.key;
+
+                if (!tagKey) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Tag key is required'
+                    });
+                }
+
+                const result = await this.db.run('DELETE FROM tags WHERE key = ?', [tagKey]);
+
+                if (result.changes === 0) {
+                    return res.status(404).json({
+                        success: false,
+                        error: 'Tag not found'
+                    });
+                }
+
+                console.log(`✅ Deleted tag with key: ${tagKey}`);
+
+                res.json({
+                    success: true,
+                    message: 'Tag deleted successfully!'
+                });
+            } catch (error) {
+                console.error('Error deleting tag:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
 
         this.app.use(router);
     }
