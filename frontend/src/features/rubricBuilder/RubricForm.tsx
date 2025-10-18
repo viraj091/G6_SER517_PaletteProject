@@ -132,7 +132,8 @@ export function RubricForm({
               label: "Radical",
               action: () => {
                 closeDialog();
-                void handleUpdateAllTemplateCriteria();
+                // TODO: Implement proper template usage tracking without modifying template structure
+                // void handleUpdateAllTemplateCriteria();
               },
             },
           ],

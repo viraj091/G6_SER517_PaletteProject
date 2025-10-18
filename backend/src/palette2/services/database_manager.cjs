@@ -116,6 +116,45 @@ class DatabaseManager {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(user_id, setting_key)
         );
+
+        -- Templates
+        CREATE TABLE IF NOT EXISTS templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            description TEXT,
+            points REAL DEFAULT 0,
+            criteria_json TEXT NOT NULL,
+            tags_json TEXT,
+            quick_start BOOLEAN DEFAULT 0,
+            saved BOOLEAN DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_used DATETIME,
+            usage_count INTEGER DEFAULT 0,
+            created_by TEXT
+        );
+
+        -- Tags
+        CREATE TABLE IF NOT EXISTS tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            color TEXT,
+            description TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_used DATETIME,
+            usage_count INTEGER DEFAULT 0
+        );
+
+        -- Assignment-Rubric mapping
+        CREATE TABLE IF NOT EXISTS assignment_rubrics (
+            assignment_id TEXT PRIMARY KEY,
+            rubric_id TEXT NOT NULL,
+            course_id TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (rubric_id) REFERENCES rubric_templates(id) ON DELETE CASCADE
+        );
         `;
 
         await this.db.exec(schema);

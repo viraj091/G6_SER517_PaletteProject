@@ -39,7 +39,7 @@ export const RubricProvider = ({ children }: { children: ReactNode }) => {
   const { settings } = useSettings();
 
   const { fetchData: getRubric } = useFetch<Rubric>(
-    `/courses/${activeCourse?.id}/rubrics/${activeAssignment?.rubricId}`,
+    `/courses/${activeCourse?.id}/assignments/${activeAssignment?.id}/rubric`,
   );
 
   const [activeRubric, setActiveRubric] = useState<Rubric>(() =>
@@ -48,7 +48,7 @@ export const RubricProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const fetchRubric = async () => {
-      if (!activeCourse?.id || !activeAssignment?.rubricId) return;
+      if (!activeCourse?.id || !activeAssignment?.id) return;
 
       try {
         const response = await getRubric();
@@ -60,7 +60,7 @@ export const RubricProvider = ({ children }: { children: ReactNode }) => {
     };
 
     void fetchRubric();
-  }, [activeCourse?.id, activeAssignment?.rubricId, settings]);
+  }, [activeCourse?.id, activeAssignment?.id, settings]);
 
   return (
     <RubricContext.Provider
