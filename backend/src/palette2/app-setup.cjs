@@ -741,25 +741,155 @@ class PaletteApp {
             try {
                 console.log(`🔍 Fetching rubric for assignment ${req.params.assignment_id}`);
 
-                // Look up the rubric ID from the assignment mapping
+                // Auto-authenticate if needed
+                if (!req.session.user && process.env.CANVAS_PERSONAL_TOKEN) {
+                    try {
+                        const userInfo = await this.authService.getUserInfo(process.env.CANVAS_PERSONAL_TOKEN);
+                        req.session.user = {
+                            id: userInfo.id,
+                            name: userInfo.name,
+                            email: userInfo.email,
+                            canvas_id: userInfo.id
+                        };
+                        req.session.tokens = {
+                            access_token: this.authService.encryptToken(process.env.CANVAS_PERSONAL_TOKEN),
+                            token_type: 'personal',
+                            expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                        };
+                        console.log('🔐 Auto-authenticated for rubric fetch');
+                    } catch (error) {
+                        console.log('⚠️  Auto-authentication failed:', error.message);
+                    }
+                }
+
+                // Look up the rubric ID from the assignment mapping (local database)
                 const mapping = await this.db.get(`
                     SELECT rubric_id FROM assignment_rubrics
                     WHERE assignment_id = ? AND course_id = ?
                 `, [req.params.assignment_id, req.params.course_id]);
 
-                if (!mapping) {
-                    return res.status(404).json({
-                        success: false,
-                        error: 'No rubric found for this assignment'
-                    });
+                let rubric = null;
+
+                if (mapping) {
+                    // Fetch the rubric from local database
+                    rubric = await this.db.getRubricTemplate(mapping.rubric_id);
+                    if (rubric) {
+                        console.log(`✅ Found local rubric: ${rubric.name} (${rubric.id})`);
+                    }
                 }
 
-                // Fetch the rubric
-                const rubric = await this.db.getRubricTemplate(mapping.rubric_id);
+                // If no local rubric found, try to fetch from Canvas
+                if (!rubric && req.session.user) {
+                    console.log('📡 No local rubric found, checking Canvas...');
+
+                    try {
+                        const token = this.authService.decryptToken(req.session.tokens.access_token);
+
+                        // Fetch assignment from Canvas (includes rubric if attached)
+                        const assignmentResponse = await fetch(
+                            `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}?include[]=rubric`,
+                            {
+                                headers: {
+                                    'Authorization': `Bearer ${token}`
+                                }
+                            }
+                        );
+
+                        if (assignmentResponse.ok) {
+                            const assignment = await assignmentResponse.json();
+
+                            if (assignment.rubric && assignment.rubric.length > 0) {
+                                console.log(`✅ Found Canvas rubric for assignment ${req.params.assignment_id}`);
+
+                                // Check if we already imported this Canvas rubric
+                                const canvasRubricId = assignment.rubric_settings?.id;
+                                if (canvasRubricId) {
+                                    const existing = await this.db.get(`
+                                        SELECT id FROM rubric_templates
+                                        WHERE canvas_id = ?
+                                    `, [canvasRubricId]);
+
+                                    if (existing) {
+                                        console.log(`📋 Canvas rubric already imported, using existing local rubric`);
+
+                                        // Make sure mapping exists
+                                        const now = new Date().toISOString();
+                                        await this.db.run(`
+                                            INSERT OR REPLACE INTO assignment_rubrics
+                                            (assignment_id, rubric_id, course_id, created_at, updated_at)
+                                            VALUES (?, ?, ?, ?, ?)
+                                        `, [req.params.assignment_id, existing.id, req.params.course_id, now, now]);
+
+                                        rubric = await this.db.getRubricTemplate(existing.id);
+
+                                        if (!rubric) {
+                                            return res.status(404).json({
+                                                success: false,
+                                                error: 'Rubric not found'
+                                            });
+                                        }
+
+                                        console.log(`✅ Found rubric: ${rubric.name} (${rubric.id})`);
+                                    }
+                                }
+
+                                // If not already imported, import it now
+                                if (!rubric) {
+                                    // Import the Canvas rubric into local database
+                                    const canvasRubric = assignment.rubric;
+                                    const rubricData = {
+                                    name: assignment.name || 'Imported Rubric',
+                                    description: assignment.description || '',
+                                    points_possible: assignment.points_possible || 0,
+                                    criteria: canvasRubric.map(criterion => ({
+                                        description: criterion.description || '',
+                                        long_description: criterion.long_description || '',
+                                        points: criterion.points || 0,
+                                        canvas_criterion_id: criterion.id,
+                                        ratings: (criterion.ratings || []).map(rating => ({
+                                            description: rating.description || '',
+                                            long_description: rating.long_description || '',
+                                            points: rating.points || 0,
+                                            canvas_rating_id: rating.id
+                                        }))
+                                    }))
+                                };
+
+                                // Create rubric in local database
+                                const rubricId = await this.rubricManager.createRubric(rubricData, req.session.user.id);
+
+                                    // Update the rubric to store Canvas rubric ID
+                                    await this.db.run(`
+                                        UPDATE rubric_templates
+                                        SET canvas_id = ?
+                                        WHERE id = ?
+                                    `, [assignment.rubric_settings?.id || null, rubricId]);
+
+                                    // Store assignment-rubric mapping
+                                    const now = new Date().toISOString();
+                                    await this.db.run(`
+                                        INSERT OR REPLACE INTO assignment_rubrics
+                                        (assignment_id, rubric_id, course_id, created_at, updated_at)
+                                        VALUES (?, ?, ?, ?, ?)
+                                    `, [req.params.assignment_id, rubricId, req.params.course_id, now, now]);
+
+                                    console.log(`💾 Imported Canvas rubric to local database (${rubricId})`);
+
+                                    // Fetch the newly created rubric
+                                    rubric = await this.db.getRubricTemplate(rubricId);
+                                }
+                            }
+                        }
+                    } catch (canvasError) {
+                        console.error('Error fetching from Canvas:', canvasError);
+                        // Continue - we'll return 404 if no rubric found
+                    }
+                }
+
                 if (!rubric) {
                     return res.status(404).json({
                         success: false,
-                        error: 'Rubric not found'
+                        error: 'No rubric found for this assignment'
                     });
                 }
 
@@ -796,6 +926,470 @@ class PaletteApp {
                 });
             } catch (error) {
                 console.error('Error fetching rubric by assignment:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // GET submissions for assignment (with group information)
+        router.get('/api/courses/:course_id/assignments/:assignment_id/submissions', async (req, res) => {
+            try {
+                console.log(`📥 Fetching submissions for assignment ${req.params.assignment_id}`);
+
+                // Auto-authenticate if needed
+                if (!req.session.user && process.env.CANVAS_PERSONAL_TOKEN) {
+                    try {
+                        const userInfo = await this.authService.getUserInfo(process.env.CANVAS_PERSONAL_TOKEN);
+                        req.session.user = {
+                            id: userInfo.id,
+                            name: userInfo.name,
+                            email: userInfo.email,
+                            canvas_id: userInfo.id
+                        };
+                        req.session.tokens = {
+                            access_token: this.authService.encryptToken(process.env.CANVAS_PERSONAL_TOKEN),
+                            token_type: 'personal',
+                            expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                        };
+                        console.log('🔐 Auto-authenticated for submissions fetch');
+                    } catch (error) {
+                        console.log('⚠️  Auto-authentication failed:', error.message);
+                    }
+                }
+
+                if (!req.session.user) {
+                    return res.status(401).json({
+                        success: false,
+                        error: 'Authentication required'
+                    });
+                }
+
+                const token = this.authService.decryptToken(req.session.tokens.access_token);
+
+                // Fetch submissions from Canvas with rubric assessments and comments
+                const submissionsResponse = await fetch(
+                    `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}/submissions?include[]=user&include[]=rubric_assessment&include[]=submission_comments&per_page=100`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    }
+                );
+
+                if (!submissionsResponse.ok) {
+                    throw new Error(`Canvas API error: ${submissionsResponse.status}`);
+                }
+
+                const submissions = await submissionsResponse.json();
+
+                // Transform Canvas rubric assessments to use local criterion IDs
+                // Get our local rubric template
+                const mapping = await this.db.get(`
+                    SELECT rubric_id FROM assignment_rubrics
+                    WHERE assignment_id = ? AND course_id = ?
+                `, [req.params.assignment_id, req.params.course_id]);
+
+                let canvasToLocalIdMap = {};
+
+                if (mapping) {
+                    const localRubric = await this.db.getRubricTemplate(mapping.rubric_id);
+
+                    // Fetch Canvas rubric to create ID mapping
+                    const canvasAssignmentResponse = await fetch(
+                        `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}?include[]=rubric`,
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        }
+                    );
+
+                    if (canvasAssignmentResponse.ok) {
+                        const canvasAssignment = await canvasAssignmentResponse.json();
+                        const canvasRubric = canvasAssignment.rubric;
+
+                        if (canvasRubric && localRubric) {
+                            // Create mapping: Canvas ID -> local ID (by matching descriptions)
+                            canvasRubric.forEach(canvasCriterion => {
+                                const matchingLocal = localRubric.criteria.find(
+                                    local => local.description === canvasCriterion.description
+                                );
+                                if (matchingLocal) {
+                                    canvasToLocalIdMap[canvasCriterion.id] = matchingLocal.id;
+                                }
+                            });
+                            console.log(`🔄 Created rubric ID mapping for ${Object.keys(canvasToLocalIdMap).length} criteria`);
+                        }
+                    }
+
+                    // Transform all submissions' rubric assessments
+                    submissions.forEach(submission => {
+                        if (submission.rubric_assessment) {
+                            const transformedAssessment = {};
+                            Object.entries(submission.rubric_assessment).forEach(([canvasId, assessment]) => {
+                                const localId = canvasToLocalIdMap[canvasId];
+                                if (localId) {
+                                    transformedAssessment[localId] = assessment;
+                                }
+                            });
+                            submission.rubric_assessment = transformedAssessment;
+                        }
+                    });
+                }
+
+                // First, fetch the assignment details to get the group_category_id
+                const assignmentResponse = await fetch(
+                    `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    }
+                );
+
+                let groupedSubmissions = { "No Group": [] };
+
+                if (assignmentResponse.ok) {
+                    const assignment = await assignmentResponse.json();
+                    console.log(`📋 Assignment group_category_id: ${assignment.group_category_id || 'none'}`);
+
+                    if (assignment.group_category_id) {
+                        // First, fetch assignment overrides to see which groups are assigned
+                        const overridesResponse = await fetch(
+                            `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}/overrides`,
+                            {
+                                headers: {
+                                    'Authorization': `Bearer ${token}`
+                                }
+                            }
+                        );
+
+                        let assignedGroupIds = new Set();
+
+                        if (overridesResponse.ok) {
+                            const overrides = await overridesResponse.json();
+                            // Filter for group overrides (not student or section overrides)
+                            const groupOverrides = overrides.filter(override => override.group_id);
+                            assignedGroupIds = new Set(groupOverrides.map(override => override.group_id));
+                            console.log(`🎯 Assignment has ${assignedGroupIds.size} group overrides:`, Array.from(assignedGroupIds));
+                        } else {
+                            console.log('⚠️  Could not fetch assignment overrides, will show all groups in category');
+                        }
+
+                        // Fetch groups from the group category
+                        const groupsResponse = await fetch(
+                            `${process.env.CANVAS_BASE_URL}/api/v1/group_categories/${assignment.group_category_id}/groups?per_page=100`,
+                            {
+                                headers: {
+                                    'Authorization': `Bearer ${token}`
+                                }
+                            }
+                        );
+
+                        console.log(`🔍 Groups endpoint status: ${groupsResponse.status}`);
+
+                        if (groupsResponse.ok) {
+                            const allGroups = await groupsResponse.json();
+
+                            // Filter groups to only those assigned (if overrides exist)
+                            const groups = assignedGroupIds.size > 0
+                                ? allGroups.filter(group => assignedGroupIds.has(group.id))
+                                : allGroups;
+
+                            console.log(`✅ Found ${groups.length} assigned groups (out of ${allGroups.length} total in category)`);
+
+                            // Create group mapping: user_id -> group info
+                            const userGroupMap = {};
+
+                            for (const group of groups) {
+                                console.log(`  📦 Group: ${group.name} (ID: ${group.id})`);
+
+                                // Fetch members for each group
+                                const membersResponse = await fetch(
+                                    `${process.env.CANVAS_BASE_URL}/api/v1/groups/${group.id}/users`,
+                                    {
+                                        headers: {
+                                            'Authorization': `Bearer ${token}`
+                                        }
+                                    }
+                                );
+
+                                if (membersResponse.ok) {
+                                    const members = await membersResponse.json();
+                                    console.log(`    👥 Members in ${group.name}: ${members.length}`);
+                                    for (const member of members) {
+                                        userGroupMap[member.id] = {
+                                            name: group.name,
+                                            id: group.id
+                                        };
+                                    }
+                                }
+
+                                // Initialize group in result (even if no submissions yet)
+                                groupedSubmissions[group.name] = [];
+                            }
+
+                            // Group submissions by user's group
+                            for (const submission of submissions) {
+                                const userId = submission.user_id;
+                                const groupInfo = userGroupMap[userId];
+                                const groupName = groupInfo ? groupInfo.name : "No Group";
+
+                                if (!groupedSubmissions[groupName]) {
+                                    groupedSubmissions[groupName] = [];
+                                }
+
+                                groupedSubmissions[groupName].push({
+                                    id: submission.id,
+                                    user_id: submission.user_id,
+                                    assignment_id: submission.assignment_id,
+                                    score: submission.score,
+                                    grade: submission.grade,
+                                    submitted_at: submission.submitted_at,
+                                    workflow_state: submission.workflow_state,
+                                    user: submission.user,
+                                    rubricAssessment: submission.rubric_assessment || {},
+                                    comments: submission.submission_comments || []
+                                });
+                            }
+                        } else {
+                            const errorText = await groupsResponse.text();
+                            console.log('⚠️  Groups endpoint failed:', errorText);
+                            groupedSubmissions["No Group"] = submissions.map(submission => ({
+                                id: submission.id,
+                                user_id: submission.user_id,
+                                assignment_id: submission.assignment_id,
+                                score: submission.score,
+                                grade: submission.grade,
+                                submitted_at: submission.submitted_at,
+                                workflow_state: submission.workflow_state,
+                                user: submission.user,
+                                rubricAssessment: submission.rubric_assessment || {},
+                                comments: submission.submission_comments || []
+                            }));
+                        }
+                    } else {
+                        console.log('⚠️  Assignment has no group_category_id, treating all as "No Group"');
+                        groupedSubmissions["No Group"] = submissions.map(submission => ({
+                            id: submission.id,
+                            user_id: submission.user_id,
+                            assignment_id: submission.assignment_id,
+                            score: submission.score,
+                            grade: submission.grade,
+                            submitted_at: submission.submitted_at,
+                            workflow_state: submission.workflow_state,
+                            user: submission.user,
+                            rubricAssessment: submission.rubric_assessment || {},
+                            comments: submission.submission_comments || []
+                        }));
+                    }
+                } else {
+                    console.log('⚠️  Failed to fetch assignment details, grouping all as "No Group"');
+                    groupedSubmissions["No Group"] = submissions.map(submission => ({
+                        id: submission.id,
+                        user_id: submission.user_id,
+                        assignment_id: submission.assignment_id,
+                        score: submission.score,
+                        grade: submission.grade,
+                        submitted_at: submission.submitted_at,
+                        workflow_state: submission.workflow_state,
+                        user: submission.user,
+                        rubricAssessment: submission.rubric_assessment || {},
+                        comments: submission.submission_comments || []
+                    }));
+                }
+
+                // Remove "No Group" if it's empty
+                if (groupedSubmissions["No Group"] && groupedSubmissions["No Group"].length === 0) {
+                    delete groupedSubmissions["No Group"];
+                }
+
+                console.log(`✅ Returning submissions grouped by ${Object.keys(groupedSubmissions).length} groups`);
+
+                res.json({
+                    success: true,
+                    message: 'Submissions fetched successfully',
+                    data: groupedSubmissions
+                });
+            } catch (error) {
+                console.error('Error fetching submissions:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // PUT grade to submission (submit to Canvas)
+        router.put('/api/courses/:course_id/assignments/:assignment_id/submissions/:submission_id', async (req, res) => {
+            try {
+                console.log(`📤 Submitting grade for submission ${req.params.submission_id}`);
+
+                // Auto-authenticate if needed
+                if (!req.session.user && process.env.CANVAS_PERSONAL_TOKEN) {
+                    try {
+                        const userInfo = await this.authService.getUserInfo(process.env.CANVAS_PERSONAL_TOKEN);
+                        req.session.user = {
+                            id: userInfo.id,
+                            name: userInfo.name,
+                            email: userInfo.email,
+                            canvas_id: userInfo.id
+                        };
+                        req.session.tokens = {
+                            access_token: this.authService.encryptToken(process.env.CANVAS_PERSONAL_TOKEN),
+                            token_type: 'personal',
+                            expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                        };
+                        console.log('🔐 Auto-authenticated for grade submission');
+                    } catch (error) {
+                        console.log('⚠️  Auto-authentication failed:', error.message);
+                    }
+                }
+
+                if (!req.session.user) {
+                    return res.status(401).json({
+                        success: false,
+                        error: 'Authentication required'
+                    });
+                }
+
+                const token = this.authService.decryptToken(req.session.tokens.access_token);
+
+                // Get the grade data from request body
+                const gradeData = req.body;
+                console.log('📝 Received grade data from frontend:', JSON.stringify(gradeData, null, 2));
+
+                // Fetch the Canvas rubric to get the correct criterion IDs
+                const assignmentResponse = await fetch(
+                    `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}?include[]=rubric`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    }
+                );
+
+                if (!assignmentResponse.ok) {
+                    throw new Error('Failed to fetch assignment rubric from Canvas');
+                }
+
+                const assignment = await assignmentResponse.json();
+                const canvasRubric = assignment.rubric;
+
+                // Transform rubric_assessment to use Canvas criterion IDs
+                let transformedAssessment = {};
+                if (gradeData.rubric_assessment && canvasRubric) {
+                    // Create mapping from Canvas criterion description to Canvas ID
+                    const canvasCriterionMap = {};
+                    canvasRubric.forEach(criterion => {
+                        canvasCriterionMap[criterion.description] = criterion.id;
+                    });
+
+                    // Get our local rubric to map keys to descriptions
+                    const mapping = await this.db.get(`
+                        SELECT rubric_id FROM assignment_rubrics
+                        WHERE assignment_id = ? AND course_id = ?
+                    `, [req.params.assignment_id, req.params.course_id]);
+
+                    if (mapping) {
+                        const localRubric = await this.db.getRubricTemplate(mapping.rubric_id);
+                        console.log('🔍 Local rubric criteria IDs/keys:', localRubric.criteria.map(c => ({ id: c.id, key: c.key, desc: c.description })));
+                        console.log('🔍 Incoming assessment keys:', Object.keys(gradeData.rubric_assessment));
+
+                        // Transform each assessment entry
+                        for (const [localKey, assessment] of Object.entries(gradeData.rubric_assessment)) {
+                            console.log(`🔍 Processing localKey: "${localKey}"`);
+                            // Find criterion by local key (try key field first, fallback to id)
+                            const criterion = localRubric.criteria.find(c => (c.key || c.id) === localKey);
+                            console.log(`🔍 Found criterion:`, criterion ? { id: criterion.id, key: criterion.key, desc: criterion.description } : 'NOT FOUND');
+                            if (criterion) {
+                                const canvasId = canvasCriterionMap[criterion.description];
+                                console.log(`🔍 Canvas ID for "${criterion.description}": ${canvasId}`);
+                                if (canvasId) {
+                                    transformedAssessment[canvasId] = assessment;
+                                }
+                            }
+                        }
+                        console.log('🔍 Final transformed assessment:', transformedAssessment);
+                    }
+                }
+
+                // Calculate total score from rubric assessment
+                let totalScore = 0;
+                if (gradeData.rubric_assessment) {
+                    Object.values(gradeData.rubric_assessment).forEach(assessment => {
+                        if (assessment.points && !isNaN(assessment.points)) {
+                            totalScore += Number(assessment.points);
+                        }
+                    });
+                }
+
+                // Prepare Canvas submission data
+                const canvasSubmissionData = {
+                    rubric_assessment: transformedAssessment
+                };
+
+                // Add total score if we have one
+                if (totalScore > 0) {
+                    canvasSubmissionData.submission = {
+                        posted_grade: totalScore
+                    };
+                }
+
+                // Add comments if they exist
+                const comments = [];
+                if (gradeData.individual_comment?.text_comment) {
+                    comments.push({
+                        text_comment: gradeData.individual_comment.text_comment,
+                        group_comment: false
+                    });
+                }
+                if (gradeData.group_comment?.text_comment) {
+                    comments.push({
+                        text_comment: gradeData.group_comment.text_comment,
+                        group_comment: true
+                    });
+                }
+
+                if (comments.length > 0) {
+                    if (!canvasSubmissionData.submission) {
+                        canvasSubmissionData.submission = {};
+                    }
+                    canvasSubmissionData.comment = comments[0]; // Canvas accepts one comment per submission
+                }
+
+                console.log('📝 Transformed grade data for Canvas:', JSON.stringify(canvasSubmissionData, null, 2));
+
+                const response = await fetch(
+                    `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}/submissions/${req.params.submission_id}`,
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(canvasSubmissionData)
+                    }
+                );
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.log('❌ Canvas API error:', response.status, errorText);
+                    throw new Error(`Canvas API error: ${response.status} - ${errorText}`);
+                }
+
+                const result = await response.json();
+                console.log('✅ Grade submitted successfully');
+
+                res.json({
+                    success: true,
+                    message: 'Grade submitted successfully',
+                    data: result
+                });
+            } catch (error) {
+                console.error('Error submitting grade:', error);
                 res.status(500).json({
                     success: false,
                     error: error.message
