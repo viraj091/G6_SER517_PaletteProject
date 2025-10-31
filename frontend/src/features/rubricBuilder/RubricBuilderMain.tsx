@@ -51,17 +51,16 @@ export function RubricBuilderMain({
     setLoading(true);
 
     const loadRubric = async () => {
-      if (!activeAssignment.rubricId) {
+      // Always try to fetch the rubric first (checks local DB and Canvas)
+      const response = await getRubric();
+
+      if (!response || !response.success) {
+        // No rubric found locally or on Canvas
         handleNewRubric();
         return;
       }
 
-      const response = await getRubric();
-      if (!response) {
-        setLoading(false);
-        return;
-      }
-
+      // Rubric exists (either local or imported from Canvas)
       const exists = response.success || false;
       setHasExistingRubric(exists);
       setIsNewRubric(!exists);

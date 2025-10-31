@@ -148,10 +148,11 @@ export const GradingProvider = ({ children }: { children: ReactNode }) => {
         {};
 
       rubric.criteria.forEach((criterion) => {
-        const savedCriterion = saved?.rubric_assessment?.[criterion.id];
-        const canvasData = canvas?.[criterion.id];
+        const criterionKey = criterion.key || criterion.id;
+        const savedCriterion = saved?.rubric_assessment?.[criterionKey];
+        const canvasData = canvas?.[criterionKey];
 
-        rubric_assessment[criterion.id] = {
+        rubric_assessment[criterionKey] = {
           points: savedCriterion?.points ?? canvasData?.points ?? "",
           rating_id: savedCriterion?.rating_id ?? canvasData?.rating_id ?? "",
           comments: savedCriterion?.comments ?? "",

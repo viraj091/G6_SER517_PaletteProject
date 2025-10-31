@@ -10,6 +10,7 @@ import {
   useEffect,
   useMemo,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import { useChoiceDialog, useSettings } from "@/context";
 import { createCriterion, createTemplate } from "@/utils";
 import { useRubricBuilder, useTemplate } from "@/hooks";
@@ -28,6 +29,7 @@ export function RubricForm({
   hotSwapActive = false,
   getUpdatedRubric,
 }: RubricFormProps) {
+  const navigate = useNavigate();
   const { settings } = useSettings();
   const { openDialog, closeDialog } = useChoiceDialog();
   const {
@@ -132,6 +134,8 @@ export function RubricForm({
               label: "Radical",
               action: () => {
                 closeDialog();
+                // Navigate to Grading tab after successful save
+                navigate("/grading");
                 // TODO: Implement proper template usage tracking without modifying template structure
                 // void handleUpdateAllTemplateCriteria();
               },
