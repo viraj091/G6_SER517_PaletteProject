@@ -27,7 +27,7 @@ export function GroupSubmissions({
   });
 
   const { activeRubric } = useRubric();
-  const { gradedSubmissionCache } = useGradingContext();
+  const { gradedSubmissionCache, setGradedSubmissionCache } = useGradingContext();
 
   // track submission IDs for easy lookups
   const submissionIds = useMemo(
@@ -38,6 +38,7 @@ export function GroupSubmissions({
   const [initMode, setInitMode] = useState<"none" | "canvas" | "restore">(
     "none",
   );
+  const [hasChosenInitMode, setHasChosenInitMode] = useState(false);
   const { openDialog, closeDialog } = useChoiceDialog();
 
   const toggleGradingView = () => {
@@ -54,7 +55,8 @@ export function GroupSubmissions({
       (id) => parsedCache[id] !== undefined,
     );
 
-    if (hasUnsavedGrades) {
+    // Only show restore dialog if user hasn't already made a choice in this session
+    if (hasUnsavedGrades && !hasChosenInitMode) {
       openDialog({
         title: "Unsaved Grades Detected",
         message:
@@ -66,6 +68,7 @@ export function GroupSubmissions({
             color: "GREEN",
             action: () => {
               setInitMode("restore");
+              setHasChosenInitMode(true);
               setGradingViewOpen(true);
               closeDialog();
             },
@@ -76,7 +79,9 @@ export function GroupSubmissions({
             color: "YELLOW",
             action: () => {
               setInitMode("canvas");
+              setHasChosenInitMode(true);
               localStorage.removeItem("gradedSubmissionCache");
+              setGradedSubmissionCache({}); // Clear the context cache too
               setGradingViewOpen(true);
               closeDialog();
             },
@@ -85,7 +90,10 @@ export function GroupSubmissions({
         ],
       });
     } else {
-      setInitMode("canvas");
+      // If already chosen or no unsaved grades, just open with the last mode (or canvas as default)
+      if (initMode === "none") {
+        setInitMode("canvas");
+      }
       setGradingViewOpen(true);
     }
   };
@@ -106,6 +114,14 @@ export function GroupSubmissions({
     (id) => gradedSubmissionCache[id] !== undefined,
   );
 
+  // Check if any submissions have been submitted
+  const hasSubmissions = submissions.some(
+    (submission) =>
+      submission.workflow_state === "submitted" ||
+      submission.workflow_state === "graded" ||
+      submission.submitted_at !== null
+  );
+
   return (
     <div className="w-full">
       <div
@@ -121,6 +137,11 @@ export function GroupSubmissions({
           {hasDraftGrades && (
             <span className="text-xs text-yellow-300 italic absolute -top-10 -left-1">
               In Progress
+            </span>
+          )}
+          {!hasSubmissions && (
+            <span className="text-xs text-orange-400 italic absolute -top-10 right-24 bg-gray-800 px-2 py-1 rounded border border-orange-400/30">
+              ⏳ Awaiting Submission
             </span>
           )}
           <PaletteActionButton

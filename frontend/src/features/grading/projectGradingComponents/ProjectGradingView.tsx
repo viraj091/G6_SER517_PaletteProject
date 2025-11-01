@@ -36,10 +36,6 @@ export function ProjectGradingView({
 
   const { initializeGradingCache } = useGradingContext();
 
-  if (!isOpen) {
-    return null;
-  }
-
   // Existing feedback states
   const [existingIndividualFeedback, setExistingIndividualFeedback] = useState<
     SubmissionComment[] | null
@@ -72,6 +68,11 @@ export function ProjectGradingView({
       setExistingIndividualFeedback(existingFeedback || null);
     }
   }, [submissions, activeStudentId]);
+
+  // Early return after all hooks
+  if (!isOpen) {
+    return null;
+  }
 
   const getExistingGroupFeedback = (submissions: Submission[]) => {
     const allSubmissionComments = [];
@@ -115,6 +116,12 @@ export function ProjectGradingView({
     closeDialog();
   };
 
+  const handleSaveGrades = () => {
+    // Grades are already being saved to localStorage via GradingContext
+    // This provides user feedback that save was successful
+    alert("Grades saved! You can continue grading or close this modal.");
+  };
+
   const renderGradingPopup = () => {
     const portalRoot = document.getElementById("portal-root");
     if (!portalRoot) return null;
@@ -129,21 +136,25 @@ export function ProjectGradingView({
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
               <h1 className="text-4xl text-white font-semibold">{groupName}</h1>
-              <PaletteBrush
-                onClick={() => {
-                  setShowGroupFeedbackTextArea(!showGroupFeedbackTextArea);
-                  setShowExistingGroupFeedback(false);
-                }}
-                title="Add Group Feedback"
-                focused={showGroupFeedbackTextArea}
-              />
-              <PaletteEye
-                onClick={() => {
-                  setShowExistingGroupFeedback(!showExistingGroupFeedback);
-                  setShowGroupFeedbackTextArea(false);
-                }}
-                focused={showExistingGroupFeedback}
-              />
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-300">Group Comments:</span>
+                <PaletteBrush
+                  onClick={() => {
+                    setShowGroupFeedbackTextArea(!showGroupFeedbackTextArea);
+                    setShowExistingGroupFeedback(false);
+                  }}
+                  title="Add Group Feedback"
+                  focused={showGroupFeedbackTextArea}
+                />
+                <PaletteEye
+                  onClick={() => {
+                    setShowExistingGroupFeedback(!showExistingGroupFeedback);
+                    setShowGroupFeedbackTextArea(false);
+                  }}
+                  title="View Existing Group Comments"
+                  focused={showExistingGroupFeedback}
+                />
+              </div>
             </div>
           </div>
           {showExistingGroupFeedback && (
@@ -160,12 +171,22 @@ export function ProjectGradingView({
             existingIndividualFeedback={existingIndividualFeedback}
           />
 
-          <div className={"flex gap-4 justify-end"}>
-            <PaletteActionButton
-              title={"Close"}
-              onClick={() => handleClickCloseButton()}
-              color={"GREEN"}
-            />
+          <div className={"flex gap-4 justify-between items-center"}>
+            <p className="text-sm text-gray-300 italic">
+              💡 Tip: Click the 🖌️ brush icon next to student names to add individual comments
+            </p>
+            <div className="flex gap-4">
+              <PaletteActionButton
+                title={"Save Progress"}
+                onClick={() => handleSaveGrades()}
+                color={"BLUE"}
+              />
+              <PaletteActionButton
+                title={"Close"}
+                onClick={() => handleClickCloseButton()}
+                color={"GREEN"}
+              />
+            </div>
           </div>
         </div>
       </div>,

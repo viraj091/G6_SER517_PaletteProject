@@ -85,6 +85,11 @@ export function SubmissionsDashboard({
         setActiveRubric(updatedRubric);
         mapExistingGrades(updatedRubric);
         setBuilderOpen(false);
+        // Clear localStorage to remove stale grades with old rubric IDs
+        localStorage.removeItem("gradedSubmissionCache");
+        setGradedSubmissionCache({});
+        // Fetch fresh submissions from Canvas to get any new grades
+        await fetchSubmissions();
       }
     } catch (error) {
       console.error("Error updating the rubric", error);
@@ -137,24 +142,54 @@ export function SubmissionsDashboard({
   const submitGrades = async () => {
     setLoading(true);
 
+    let successCount = 0;
+    let failCount = 0;
+
     for (const gradedSubmission of Object.values(gradedSubmissionCache)) {
       if (gradedSubmission.user?.id) {
-        await fetch(
-          `${BASE_URL}${GRADING_ENDPOINT}${gradedSubmission.user.id}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(gradedSubmission),
-          },
-        );
+        try {
+          const response = await fetch(
+            `${BASE_URL}${GRADING_ENDPOINT}${gradedSubmission.user.id}`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(gradedSubmission),
+            },
+          );
+
+          if (response.ok) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (error) {
+          console.error("Error submitting grade:", error);
+          failCount++;
+        }
       }
     }
-    setLoading(false);
 
     await fetchSubmissions(); // refresh submissions
     setLoading(false);
     setGradedSubmissionCache({}); // clear submission cache
     localStorage.removeItem("gradedSubmissionCache"); // clear local storage
+
+    // Show success/failure dialog
+    openDialog({
+      excludeCancel: true,
+      title: failCount === 0 ? "Success!" : "Submission Complete",
+      message:
+        failCount === 0
+          ? `Successfully submitted ${successCount} grade${successCount === 1 ? "" : "s"} to Canvas!`
+          : `Submitted ${successCount} grade${successCount === 1 ? "" : "s"} successfully. ${failCount} submission${failCount === 1 ? "" : "s"} failed.`,
+      buttons: [
+        {
+          autoFocus: true,
+          label: "OK",
+          action: () => closeDialog(),
+        },
+      ],
+    });
   };
 
   const handleClickSubmitGrades = () => {
@@ -165,9 +200,9 @@ export function SubmissionsDashboard({
       buttons: [
         {
           label: "Send them!",
-          action: () => {
-            void submitGrades();
+          action: async () => {
             closeDialog();
+            await submitGrades();
           },
           autoFocus: true,
         },

@@ -32,7 +32,7 @@ export function GradingTable({
   >(() => {
     const initial = new Map<string, boolean>();
     activeRubric.criteria.forEach((criterion) =>
-      initial.set(criterion.id, criterion.isGroupCriterion),
+      initial.set(criterion.key || criterion.id, criterion.isGroupCriterion),
     );
     return initial;
   });
@@ -63,7 +63,7 @@ export function GradingTable({
         }
       });
 
-      map.set(criterion.id, criterionColors);
+      map.set(criterion.key || criterion.id, criterionColors);
     });
 
     return map;
@@ -94,7 +94,7 @@ export function GradingTable({
         </thead>
         <tbody>
           {activeRubric.criteria.map((criterion: Criteria) => (
-            <tr key={criterion.id}>
+            <tr key={criterion.key || criterion.id}>
               <td className=" border border-gray-500 px-4 py-2 w-full">
                 <p className="truncate overflow-hidden">
                   {criterion.description}
@@ -104,18 +104,19 @@ export function GradingTable({
                   <p>Apply to Group</p>
                   <input
                     type="checkbox"
-                    name={`${criterion.id}-checkbox`}
-                    id={`${criterion.id}-checkbox`}
-                    checked={groupCriteriaMap.get(criterion.id) ?? false}
-                    onChange={() => toggleGroupCriterion(criterion.id)}
+                    name={`${criterion.key}-checkbox`}
+                    id={`${criterion.key}-checkbox`}
+                    checked={groupCriteriaMap.get(criterion.key || criterion.id) ?? false}
+                    onChange={() => toggleGroupCriterion(criterion.key || criterion.id)}
                   />
                 </label>
               </td>
               {submissions.map((submission: Submission) => {
                 const submissionId = submission.id;
+                const criterionId = criterion.key || criterion.id;
                 const assessment =
                   gradedSubmissionCache[submissionId]?.rubric_assessment?.[
-                    criterion.id
+                    criterionId
                   ];
                 const currentValue = assessment?.points;
                 const stringValue =
@@ -130,26 +131,26 @@ export function GradingTable({
 
                   const newPoints = Number(ratingStringValue);
 
-                  if (!groupCriteriaMap.get(criterion.id)) {
-                    updateScore(submissionId, criterion.id, newPoints);
+                  if (!groupCriteriaMap.get(criterionId)) {
+                    updateScore(submissionId, criterionId, newPoints);
                   } else {
                     submissions.forEach((sub) => {
-                      updateScore(sub.id, criterion.id, newPoints);
+                      updateScore(sub.id, criterionId, newPoints);
                     });
                   }
                 };
 
                 const bgColor =
-                  stringValue !== ""
+                  currentValue != null
                     ? // user picked something → look up its color
-                      (colorMap.get(criterion.id)?.[Number(stringValue)] ??
+                      (colorMap.get(criterionId)?.[currentValue] ??
                       "bg-gray-800")
                     : // still on placeholder
                       "bg-gray-800";
 
                 return (
                   <td
-                    key={`${criterion.id}-${submission.id}`}
+                    key={`${criterionId}-${submission.id}`}
                     className="w-1/6 border border-gray-500 px-4 py-2 text-center"
                   >
                     <select
@@ -157,7 +158,7 @@ export function GradingTable({
                         `w-full cursor-pointer text-white text-center rounded px-2 py-1 transition-colors duration-200 `,
                         `${bgColor}`,
                       )}
-                      value={currentValue}
+                      value={currentValue ?? ""}
                       onChange={handleRatingChange}
                     >
                       <option value="" disabled>
