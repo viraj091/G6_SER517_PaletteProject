@@ -98,6 +98,38 @@ function TemplatesMainContent(): ReactElement {
           </p>
         </div>
 
+        {/* Help Section */}
+        <div className="bg-gradient-to-r from-blue-900 to-blue-800 border-2 border-blue-500 rounded-lg p-4 mb-6 shadow-lg">
+          <div className="flex items-start gap-3">
+            <i className="fas fa-lightbulb text-yellow-400 text-2xl mt-1" />
+            <div className="w-full">
+              <h3 className="text-blue-100 font-bold text-lg mb-2">What are Templates?</h3>
+              <p className="text-blue-200 text-sm mb-2">
+                Templates are reusable collections of grading criteria that you can import into rubrics.
+                Create a template once and use it across multiple assignments!
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+                <div className="bg-blue-950 bg-opacity-50 rounded p-2">
+                  <p className="text-blue-100 font-semibold text-xs mb-1">📝 Create Template</p>
+                  <p className="text-blue-300 text-xs">Click "Create Template" below to build a new reusable template</p>
+                </div>
+                <div className="bg-blue-950 bg-opacity-50 rounded p-2">
+                  <p className="text-blue-100 font-semibold text-xs mb-1">✏️ Edit Template</p>
+                  <p className="text-blue-300 text-xs">Click a template to expand, then click "Edit" to modify it</p>
+                </div>
+                <div className="bg-blue-950 bg-opacity-50 rounded p-2">
+                  <p className="text-blue-100 font-semibold text-xs mb-1">🔖 Tag Templates</p>
+                  <p className="text-blue-300 text-xs">Organize templates with tags for easy filtering</p>
+                </div>
+                <div className="bg-blue-950 bg-opacity-50 rounded p-2">
+                  <p className="text-blue-100 font-semibold text-xs mb-1">📤 Use in Rubrics</p>
+                  <p className="text-blue-300 text-xs">In Rubric Builder, click "Templates" to import criteria</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Search Bar */}
         <TemplateSearch
           searchQuery={searchQuery}
@@ -128,9 +160,35 @@ function TemplatesMainContent(): ReactElement {
         <p className="text-white text-2xl font-bold mb-4 text-center">
           View, Edit, and Create templates here!
         </p>
-        <p className="text-gray-300 text-2xl font-bold mb-4">
-          No templates found. Create a template to get started!
-        </p>
+
+        {/* Getting Started Guide */}
+        <div className="bg-gradient-to-br from-blue-900 to-purple-900 border-2 border-blue-500 rounded-lg p-6 mb-6 shadow-xl max-w-3xl mx-auto">
+          <div className="text-center mb-4">
+            <i className="fas fa-rocket text-yellow-400 text-4xl mb-2" />
+            <h2 className="text-white text-2xl font-bold">Welcome to Templates!</h2>
+            <p className="text-blue-200 mt-2">
+              No templates yet. Let's create your first one!
+            </p>
+          </div>
+
+          <div className="bg-blue-950 bg-opacity-50 rounded-lg p-4 mb-4">
+            <h3 className="text-blue-100 font-bold mb-2">📚 What are Templates?</h3>
+            <p className="text-blue-200 text-sm">
+              Templates are collections of reusable grading criteria. Instead of recreating the same
+              criteria for every assignment, create a template once and import it into any rubric!
+            </p>
+          </div>
+
+          <div className="bg-blue-950 bg-opacity-50 rounded-lg p-4">
+            <h3 className="text-blue-100 font-bold mb-2">🚀 Getting Started:</h3>
+            <ol className="text-blue-200 text-sm space-y-2 list-decimal list-inside">
+              <li>Click <strong>"Create Template"</strong> below</li>
+              <li>Give your template a descriptive title</li>
+              <li>Add grading criteria with point values and descriptions</li>
+              <li>Save it! Now you can reuse it in any rubric via the Rubric Builder</li>
+            </ol>
+          </div>
+        </div>
       </div>
     );
   };

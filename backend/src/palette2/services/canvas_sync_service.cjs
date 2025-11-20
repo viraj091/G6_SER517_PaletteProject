@@ -92,7 +92,7 @@ class CanvasSyncService {
         }
     }
 
-    async uploadRubric(localRubricId, courseId) {
+    async uploadRubric(localRubricId, courseId, assignmentId = null, accessToken = null) {
         try {
             if (!this.isOnline) {
                 await this.db.addToSyncQueue('rubric', localRubricId, 'create');
@@ -102,39 +102,78 @@ class CanvasSyncService {
             const rubric = await this.db.getRubricTemplate(localRubricId);
             if (!rubric) throw new Error('Rubric not found');
 
-            // Convert to Canvas format
+            // Convert to Canvas format - Canvas expects indexed criteria object
+            const criteriaObj = {};
+            rubric.criteria.forEach((criterion, index) => {
+                // Calculate max points from ratings
+                const maxPoints = Math.max(...criterion.ratings.map(r => r.points), 0);
+
+                // Build indexed ratings object
+                const ratingsObj = {};
+                criterion.ratings.forEach((rating, rIndex) => {
+                    ratingsObj[rIndex] = {
+                        description: rating.description,
+                        long_description: rating.long_description || '',
+                        points: rating.points
+                    };
+                });
+
+                criteriaObj[index] = {
+                    description: criterion.description,
+                    long_description: criterion.long_description || '',
+                    points: maxPoints,
+                    ratings: ratingsObj
+                };
+            });
+
             const canvasRubric = {
                 rubric: {
                     title: rubric.name,
-                    description: rubric.description,
-                    points_possible: rubric.points_possible,
-                    criteria: rubric.criteria.map(criterion => ({
-                        description: criterion.description,
-                        long_description: criterion.long_description,
-                        points: criterion.points,
-                        ratings: criterion.ratings.map(rating => ({
-                            description: rating.description,
-                            long_description: rating.long_description,
-                            points: rating.points
-                        }))
-                    }))
+                    points_possible: rubric.criteria.reduce((sum, c) => sum + Math.max(...c.ratings.map(r => r.points), 0), 0),
+                    criteria: criteriaObj
                 }
             };
 
-            const response = await this.api.post(`/courses/${courseId}/rubrics`, canvasRubric);
+            // If assignment ID provided, associate rubric with assignment
+            if (assignmentId) {
+                canvasRubric.rubric_association = {
+                    association_id: assignmentId,
+                    association_type: 'Assignment',
+                    use_for_grading: true,
+                    purpose: 'grading'
+                };
+            }
+
+            // Use provided access token if available, otherwise use default
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            if (accessToken) {
+                headers['Authorization'] = `Bearer ${accessToken}`;
+            } else {
+                headers['Authorization'] = `Bearer ${this.accessToken}`;
+            }
+
+            console.log(`📤 Sending rubric to Canvas: POST /courses/${courseId}/rubrics`);
+            console.log('📋 Rubric data:', JSON.stringify(canvasRubric, null, 2));
+
+            const response = await this.api.post(`/courses/${courseId}/rubrics`, canvasRubric, { headers });
             const canvasRubricData = response.data;
 
-            // Update local record with Canvas ID
-            await this.db.updateRubricTemplate(localRubricId, {
-                ...rubric,
-                canvas_id: canvasRubricData.id
-            });
+            // Log full Canvas response to debug ID issue
+            console.log('📦 Full Canvas response:', JSON.stringify(canvasRubricData, null, 2));
 
-            console.log(`Uploaded rubric: ${rubric.name}`);
+            // Note: Canvas ID update is handled by the rubric manager
+            console.log(`✅ Uploaded rubric: ${rubric.name}${assignmentId ? ` and associated with assignment ${assignmentId}` : ''}`);
+            console.log(`📝 Canvas rubric ID: ${canvasRubricData.id}`);
             return canvasRubricData.id;
 
         } catch (error) {
             console.error('Failed to upload rubric:', error.message);
+            if (error.response) {
+                console.error('Canvas API Response Status:', error.response.status);
+                console.error('Canvas API Response Data:', JSON.stringify(error.response.data, null, 2));
+            }
             await this.db.addToSyncQueue('rubric', localRubricId, 'create');
             throw error;
         }

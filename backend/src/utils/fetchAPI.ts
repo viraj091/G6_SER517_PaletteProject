@@ -6,20 +6,33 @@ import { SettingsAPI } from "../settings.js";
 
 const CanvasAPIConfig = {
   baseURL: "https://canvas.asu.edu/api/v1",
-  headers: {
-    // get the token from the environment variables
-    Authorization: `Bearer ${SettingsAPI.getUserSettings(true).token}`,
-    Accept: "application/json",
-    "Content-Type": "application/json",
-  },
+  headers: {} as Record<string, string>,
+  cookies: {} as Record<string, string>,
 };
 
 /**
- * Helper function to refresh the API config and ensure it's using the latest token.
+ * Helper function to refresh the API config and ensure it's using the latest auth method.
+ * Prioritizes cookie-based authentication over Bearer token.
  */
-const refreshToken = () => {
-  console.log("REFRESHING TOKEN");
-  CanvasAPIConfig.headers.Authorization = `Bearer ${SettingsAPI.getUserSettings(true).token}`;
+const refreshAuth = () => {
+  const settings = SettingsAPI.getUserSettings(true);
+
+  // Check if cookies are available (cookie-based auth)
+  if (settings.cookies && Object.keys(settings.cookies).length > 0) {
+    console.log("REFRESHING AUTH (using cookies)");
+    CanvasAPIConfig.cookies = settings.cookies;
+    // Remove Authorization header when using cookies
+    delete CanvasAPIConfig.headers.Authorization;
+  } else {
+    // Fall back to Bearer token if cookies aren't available
+    console.log("REFRESHING AUTH (using Bearer token)");
+    CanvasAPIConfig.headers.Authorization = `Bearer ${settings.token}`;
+    CanvasAPIConfig.cookies = {};
+  }
+
+  // Set common headers
+  CanvasAPIConfig.headers.Accept = "application/json";
+  CanvasAPIConfig.headers["Content-Type"] = "application/json";
 };
 
 /**
@@ -33,15 +46,37 @@ export async function fetchAPI<T>(
   endpoint: string,
   options: RequestInit = {}, // default options (none)
 ): Promise<T> {
-  refreshToken();
+  refreshAuth();
   try {
     const url = `${CanvasAPIConfig.baseURL}${endpoint}`;
+
+    // Build headers with cookies if available
+    const headers: Record<string, string> = {
+      ...CanvasAPIConfig.headers,
+    };
+
+    // Merge options.headers if provided (handle both plain objects and Headers instances)
+    if (options.headers) {
+      if (options.headers instanceof Headers) {
+        options.headers.forEach((value, key) => {
+          headers[key] = value;
+        });
+      } else {
+        Object.assign(headers, options.headers);
+      }
+    }
+
+    // Add cookies as Cookie header if available
+    if (Object.keys(CanvasAPIConfig.cookies).length > 0) {
+      const cookieString = Object.entries(CanvasAPIConfig.cookies)
+        .map(([name, value]) => `${name}=${value}`)
+        .join("; ");
+      headers.Cookie = cookieString;
+    }
+
     const requestInit: RequestInit = {
       ...options,
-      headers: {
-        ...CanvasAPIConfig.headers,
-        ...(options.headers || {}),
-      } as HeadersInit,
+      headers: headers as HeadersInit,
     };
 
     // build a request object to pass to fetch, then make the request and log it

@@ -8,6 +8,7 @@ const SETTINGS_PATH = "./settings.json";
 export const defaultSettings: Settings = {
   userName: "admin",
   token: "default token",
+  cookies: {},
   templateCriteria: [],
   preferences: {
     defaultRatings: {
@@ -148,6 +149,18 @@ export const SettingsAPI = {
     // Write the updated settings object to the settings file
     fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
   },
+
+  updateCanvasCookies(cookies: { [key: string]: string }): void {
+    if (settings === null) {
+      initializeSettings();
+    }
+
+    // Update the cookies in the settings object
+    settings!.cookies = cookies;
+
+    // Write the updated settings object to the settings file
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
+  },
 };
 
 /**
@@ -184,6 +197,7 @@ function mergeSettings(target: Partial<Settings>): Settings {
   return {
     userName: target.userName ?? defaultSettings.userName,
     token: target.token ?? defaultSettings.token,
+    cookies: target.cookies ?? defaultSettings.cookies,
     templateCriteria:
       target.templateCriteria ?? defaultSettings.templateCriteria,
     preferences: {

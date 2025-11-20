@@ -6,6 +6,47 @@
 
 An interactive rubric builder and grading assistant tool to improve the group project grading experience on Canvas.
 
+---
+
+## 📦 Windows Standalone Installer (Easiest Option)
+
+**For professors and users who want to test Palette without any setup:**
+
+1. **Download**: Get `Palette Setup 2.0.0.exe` from the `dist-electron` folder
+2. **Install**: Double-click the installer and follow the setup wizard
+3. **Run**: Launch Palette from your desktop shortcut or Start Menu
+
+### Prerequisites for Standalone Version
+
+- **Windows 10 or later** (64-bit)
+- **Python 3.8+** (required for Canvas login): Download from [python.org](https://www.python.org/downloads/)
+  - During Python installation, check **"Add Python to PATH"**
+  - After installing Python, the app will auto-install required packages
+
+### Using the Standalone App
+
+1. Launch Palette from the desktop shortcut
+2. Click the settings icon → "Login to Canvas"
+3. Log in with your ASU credentials in the browser window that appears
+4. Select your course and assignment
+5. Create/edit rubrics - they automatically sync to Canvas when you click "Save Rubric"
+
+### Building the Installer (For Developers)
+
+To rebuild the Windows installer:
+
+```bash
+# Install dependencies
+npm install
+
+# Build the executable
+npm run build:electron
+```
+
+The installer will be created in `dist-electron/Palette Setup 2.0.0.exe`
+
+---
+
 ## Table of Contents
 
 - [Requirements](#requirements)
@@ -239,6 +280,76 @@ A token is required to interact with the Canvas API.
 > [!IMPORTANT]
 > Your account must be authorized as a teacher or grader in order to perform most actions. Students can do certain
 > actions via the API but Palette does not support those at this time.
+
+### Canvas Browser-Based Login (Alternative to Manual Token)
+
+Palette now supports browser-based Canvas authentication using cookies, eliminating the need to manually generate and copy tokens.
+
+#### Python Setup (Required for Browser Login)
+
+1. **Install Python 3.8+** - Download from [python.org](https://www.python.org/downloads/)
+
+   Verify installation:
+   ```bash
+   python --version
+   ```
+
+2. **Install Python dependencies:**
+
+   Python dependencies are automatically installed when you run `npm install` (via postinstall script).
+
+   To manually install Python dependencies:
+   ```bash
+   npm run install:python
+   ```
+
+   Or directly via pip:
+   ```bash
+   cd backend/src/python
+   pip install -r requirements.txt
+   ```
+
+   Required packages:
+   - `PySide6>=6.2.0` - Qt framework
+   - `PySide6-Addons>=6.2.0` - Qt add-ons including WebEngine for browser rendering
+   - `requests>=2.31.0` - HTTP library
+
+#### Using Browser-Based Login
+
+1. Start Palette and navigate to Settings (`http://localhost:5173/settings`)
+2. Click the **"Login to Canvas"** button
+3. A browser window will open with the Canvas login page
+4. Log in with your ASU credentials
+5. The window will automatically close after successful authentication
+6. You're now authenticated! No manual token needed.
+
+#### How It Works
+
+- Opens a Qt browser window for Canvas login
+- Captures authentication cookies after successful login
+- Stores cookies in `settings.json`
+- All Canvas API requests use these cookies automatically
+- Falls back to Bearer token if cookies aren't available
+
+#### Troubleshooting Browser Login
+
+**Python not found:**
+- Ensure Python is in your system PATH
+- Try using `python3` instead of `python`
+
+**PySide6 installation fails:**
+- Windows: Install Visual C++ redistributables
+- macOS: Use `pip3 install PySide6`
+- Linux: Install system dependencies (`sudo apt-get install python3-pyqt5`)
+
+**Login window doesn't appear:**
+- Verify PySide6 installation: `pip list | grep PySide6`
+- Check Python dependencies are installed
+
+**Cookies not working:**
+- Ensure you completed the full login process
+- Check `settings.json` for saved cookies
+- Try logging in again
 
 ---
 

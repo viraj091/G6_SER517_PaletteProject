@@ -28,20 +28,9 @@ const TemplateUpload: React.FC<TemplateUploadProps> = ({
     });
   }, []);
 
-  const handleImportTemplate = (event: React.MouseEvent<HTMLElement>) => {
-    event.preventDefault();
-    console.log("import template");
-
-    const selectedTemplateTitle = event.currentTarget.textContent;
-    console.log("templates", templates);
-
-    for (const template of templates) {
-      if (template.title === selectedTemplateTitle) {
-        onTemplateSelected(template);
-        break;
-      }
-    }
-
+  const handleImportTemplate = (template: Template) => {
+    console.log("import template", template.title);
+    onTemplateSelected(template);
     closeImportCard();
   };
 
@@ -113,19 +102,41 @@ const TemplateUpload: React.FC<TemplateUploadProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full w-full items-center justify-center">
-      <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 w-full">
-        {templates.map((t, tKey) => {
-          return (
-            <div
-              key={tKey}
-              onClick={(event) => void handleImportTemplate(event)}
-              className="text-center border border-gray-600 rounded-lg p-2 hover:bg-gray-600 w-full cursor-pointer"
-            >
-              {t.title}
-            </div>
-          );
-        })}
+    <div className="flex flex-col h-full w-full items-center justify-center p-4">
+      <div className="bg-blue-900 bg-opacity-30 border-2 border-blue-500 rounded-lg p-4 mb-4 w-full">
+        <h3 className="text-blue-300 font-bold mb-2 flex items-center gap-2">
+          <i className="fas fa-info-circle" />
+          Import Entire Template
+        </h3>
+        <p className="text-blue-200 text-sm">
+          Select a template below to import <strong>all criteria</strong> from that template into your rubric at once.
+          This is useful for quickly building rubrics from pre-made templates.
+        </p>
+        <p className="text-blue-200 text-xs mt-2 italic">
+          💡 Tip: For adding individual criteria, use the criterion editor instead.
+        </p>
+      </div>
+      <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 w-full max-h-96">
+        {templates.length === 0 ? (
+          <p className="text-gray-400 text-center p-4">
+            No templates available. Create templates from the Templates page first!
+          </p>
+        ) : (
+          templates.map((t, tKey) => {
+            return (
+              <div
+                key={tKey}
+                onClick={() => handleImportTemplate(t)}
+                className="text-center border border-gray-600 rounded-lg p-3 mb-2 hover:bg-gray-600 hover:border-blue-500 w-full cursor-pointer transition-all"
+              >
+                <p className="font-semibold">{t.title}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {t.criteria.length} {t.criteria.length === 1 ? "criterion" : "criteria"} • {t.points} points
+                </p>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

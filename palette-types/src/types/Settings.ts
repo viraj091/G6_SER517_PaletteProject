@@ -7,6 +7,7 @@ export interface Settings {
   userName: string;
   templateCriteria: Template[];
   token: string;
+  cookies?: { [key: string]: string };
   preferences: {
     defaultRatings: {
       maxDefaultPoints: number;

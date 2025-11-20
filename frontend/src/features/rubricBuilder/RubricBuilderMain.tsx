@@ -192,7 +192,7 @@ export function RubricBuilderMain({
       <Dialog
         isOpen={templateInputActive}
         onClose={() => setTemplateInputActive(false)}
-        title={"Import Template:"}
+        title={"Import All Criteria from Template"}
       >
         <TemplateUpload closeImportCard={() => setTemplateInputActive(false)} />
       </Dialog>

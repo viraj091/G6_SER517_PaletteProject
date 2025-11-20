@@ -6,6 +6,7 @@ import {
   updateUserSettings,
   updateUserAssignmentFilterPresets,
   updateUserAssignmentFilters,
+  canvasLogin,
 } from "../controllers/userController.js";
 import { validationErrorHandler } from "../middleware/validationErrorHandler.js";
 import { updateUserSettingsValidator } from "../validators/updateUserSettingsValidator.js";
@@ -99,5 +100,37 @@ userRouter.put(
   validationErrorHandler,
   updateUserAssignmentFilterPresets,
 );
+
+/**
+ * @swagger
+ * /user/canvas-login:
+ *   post:
+ *     summary: Initiate Canvas login
+ *     description: Opens a browser-based login window to authenticate with Canvas. Captures and stores cookies for API access.
+ *     responses:
+ *       200:
+ *         description: Canvas login successful.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     authenticated:
+ *                       type: boolean
+ *                       example: true
+ *                 message:
+ *                   type: string
+ *                   example: Canvas login successful
+ *       500:
+ *         description: Canvas login failed.
+ * @route POST /user/canvas-login
+ */
+userRouter.post("/canvas-login", canvasLogin);
 
 export default userRouter;

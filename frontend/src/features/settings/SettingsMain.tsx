@@ -12,10 +12,15 @@ import { useChoiceDialog, useSettings } from "@/context";
 export function SettingsMain(): ReactElement {
   const { settings, setSettings, error } = useSettings();
   const [loading, setLoading] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
 
   const { fetchData: updateSettings } = useFetch("/user/settings", {
     method: "PUT",
     body: JSON.stringify(settings),
+  });
+
+  const { fetchData: canvasLogin } = useFetch("/user/canvas-login", {
+    method: "POST",
   });
 
   const { openDialog, closeDialog } = useChoiceDialog();
@@ -100,6 +105,67 @@ export function SettingsMain(): ReactElement {
   };
 
   /**
+   * Handles Canvas login via browser-based authentication.
+   */
+  const handleCanvasLogin = async () => {
+    setLoginLoading(true);
+    try {
+      openDialog({
+        title: "Canvas Login",
+        message:
+          "A browser window will open for Canvas login. Please log in and the window will close automatically.",
+        buttons: [
+          { label: "OK", action: () => closeDialog(), autoFocus: true },
+        ],
+      });
+
+      const response = await canvasLogin();
+
+      if (response.success) {
+        // Reload settings to get the updated cookies
+        window.location.reload();
+
+        openDialog({
+          title: "Success",
+          message: "Canvas login successful! You are now authenticated.",
+          buttons: [
+            { label: "Great!", action: () => closeDialog(), autoFocus: true },
+          ],
+        });
+      } else {
+        openDialog({
+          title: "Error",
+          message: response.error || "Canvas login failed.",
+          buttons: [
+            {
+              label: "Got It",
+              action: () => closeDialog(),
+              autoFocus: true,
+              color: "RED",
+            },
+          ],
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      openDialog({
+        title: "Error",
+        message: "An error occurred during Canvas login.",
+        buttons: [
+          {
+            label: "Got It",
+            action: () => closeDialog(),
+            autoFocus: true,
+            color: "RED",
+          },
+        ],
+      });
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  /**
    * Renders the content of the settings page.
    *
    * @returns {ReactElement} The rendered content.
@@ -130,7 +196,7 @@ export function SettingsMain(): ReactElement {
           />
           {/* Token */}
           <label className="block font-bold text-gray-400 mt-4 mb-2">
-            Token Input
+            Token Input (Optional - use Canvas Login instead)
           </label>
           <input
             type="password"
@@ -138,6 +204,44 @@ export function SettingsMain(): ReactElement {
             value={settings.token}
             onChange={(e) => handleInputChange("token", e.target.value)}
           />
+
+          {/* Canvas Login Section */}
+          <div className="mt-4">
+            <label className="block font-bold text-gray-400 mb-2">
+              Canvas Authentication Status
+            </label>
+            {settings.cookies && Object.keys(settings.cookies).length > 0 ? (
+              <div className="bg-green-900 border border-green-600 rounded p-3 mb-3">
+                <p className="text-green-200 flex items-center gap-2">
+                  <span className="text-2xl">✓</span>
+                  <span>Successfully authenticated with Canvas via browser login</span>
+                </p>
+                <p className="text-sm text-green-300 mt-1">
+                  {Object.keys(settings.cookies).length} cookies stored
+                </p>
+              </div>
+            ) : (
+              <div className="bg-yellow-900 border border-yellow-600 rounded p-3 mb-3">
+                <p className="text-yellow-200 flex items-center gap-2">
+                  <span className="text-2xl">⚠</span>
+                  <span>Not authenticated via Canvas login</span>
+                </p>
+                <p className="text-sm text-yellow-300 mt-1">
+                  Use the button below to log in with your Canvas credentials
+                </p>
+              </div>
+            )}
+
+            <PaletteActionButton
+              title={loginLoading ? "Opening Canvas Login..." : "Login to Canvas"}
+              onClick={() => void handleCanvasLogin()}
+              color={"GREEN"}
+              disabled={loginLoading}
+            />
+            <p className="text-sm text-gray-400 mt-2">
+              Browser-based authentication. Window will close automatically after login.
+            </p>
+          </div>
         </div>
         {/* Preferences */}
         <div className={"grid gap-2"}>

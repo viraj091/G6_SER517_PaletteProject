@@ -275,6 +275,106 @@ export function RubricForm({
     }
   };
 
+  const handleSaveAsTemplate = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+
+    if (!activeRubric || activeRubric.criteria.length === 0) {
+      openDialog({
+        title: "Cannot Save as Template",
+        message: "Please add at least one criterion before saving as a template.",
+        excludeCancel: true,
+        buttons: [
+          {
+            label: "Got It",
+            action: () => closeDialog(),
+            autoFocus: true,
+          },
+        ],
+      });
+      return;
+    }
+
+    // Create template from current rubric
+    const template = createTemplate();
+    template.title = activeRubric.title || "Untitled Template";
+    template.criteria = [...activeRubric.criteria];
+    template.points = activeRubric.criteria.reduce(
+      (sum, criterion) => sum + (criterion.pointsPossible || 0),
+      0
+    );
+    template.createdAt = new Date().toISOString();
+    template.lastUsed = new Date().toISOString();
+    template.usageCount = 0;
+    template.tags = [];
+
+    try {
+      setLoading(true);
+      const response = await fetch("http://localhost:3000/api/templates", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(template),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        openDialog({
+          title: "Template Saved!",
+          message: `"${template.title}" has been saved to your Templates library. You can now reuse this template in other rubrics!`,
+          excludeCancel: true,
+          buttons: [
+            {
+              label: "View Templates",
+              action: () => {
+                closeDialog();
+                navigate("/templates");
+              },
+              autoFocus: false,
+            },
+            {
+              label: "Continue Editing",
+              action: () => closeDialog(),
+              autoFocus: true,
+            },
+          ],
+        });
+      } else {
+        openDialog({
+          title: "Error Saving Template",
+          message: result.error || "Failed to save template. Please try again.",
+          excludeCancel: true,
+          buttons: [
+            {
+              label: "Close",
+              action: () => closeDialog(),
+              autoFocus: true,
+              color: "RED",
+            },
+          ],
+        });
+      }
+    } catch (error) {
+      console.error("Error saving template:", error);
+      openDialog({
+        title: "Error",
+        message: "An unexpected error occurred while saving the template.",
+        excludeCancel: true,
+        buttons: [
+          {
+            label: "Close",
+            action: () => closeDialog(),
+            autoFocus: true,
+            color: "RED",
+          },
+        ],
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <form
       className=" w-full self-center grid p-10 my-6 gap-4 bg-gray-800 shadow-lg rounded-lg relative"
@@ -341,6 +441,13 @@ export function RubricForm({
           onClick={onRemoveAllCriteria}
           color={"RED"}
           title={"Clear Form"}
+        />
+
+        <PaletteActionButton
+          title={"Save as Template"}
+          onClick={(event) => void handleSaveAsTemplate(event)}
+          color={"PURPLE"}
+          tooltip="Save this rubric as a reusable template"
         />
 
         <PaletteActionButton

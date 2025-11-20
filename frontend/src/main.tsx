@@ -21,7 +21,7 @@ import {
 } from "@/context";
 
 import { SettingsProvider } from "@/context/SettingsContext.tsx";
-import TemplatesMain from "@/features/templatesPage/TempatesMain.tsx";
+import TemplatesMain from "@/features/templatesPage/TemplatesMain.tsx";
 import { ChoiceDialog } from "@/components";
 
 // Defined a "root" div in index.html that we pull in here and then call the React render method.

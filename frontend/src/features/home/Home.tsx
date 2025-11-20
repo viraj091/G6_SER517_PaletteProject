@@ -1,6 +1,8 @@
-import { ReactElement } from "react";
+import { ReactElement, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Footer, Header } from "@/components";
+import { useFetch } from "@/hooks";
+import { useChoiceDialog } from "@/context";
 import Paint from "./Paint";
 
 function hexToTailwindColor(hex: string): string {
@@ -22,6 +24,13 @@ function hexToTailwindColor(hex: string): string {
 
 export function Home(): ReactElement {
   const navigate = useNavigate();
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [tokenLoginLoading, setTokenLoginLoading] = useState(false);
+  const { openDialog, closeDialog } = useChoiceDialog();
+
+  const { fetchData: canvasLogin } = useFetch("/user/canvas-login", {
+    method: "POST",
+  });
 
   const blobColors = [
     "#ff0000", // red
@@ -51,12 +60,64 @@ export function Home(): ReactElement {
     hexToTailwindColor(cursorColor),
   );
   console.log("hexToTailwindColor(paintColor)", hexToTailwindColor(paintColor));
-  const handleLogin = () => {
-    navigate("/rubric-builder");
+
+  const handleCanvasLogin = async () => {
+    setLoginLoading(true);
+    try {
+      const response = await canvasLogin();
+
+      if (response.success) {
+        openDialog({
+          title: "Success",
+          message: "Canvas login successful! Redirecting to Palette...",
+          buttons: [
+            {
+              label: "Continue",
+              action: () => {
+                closeDialog();
+                navigate("/rubric-builder");
+              },
+              autoFocus: true,
+            },
+          ],
+        });
+      } else {
+        openDialog({
+          title: "Error",
+          message: response.error || "Canvas login failed.",
+          buttons: [
+            {
+              label: "Got It",
+              action: () => closeDialog(),
+              autoFocus: true,
+              color: "RED",
+            },
+          ],
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      openDialog({
+        title: "Error",
+        message: "An error occurred during Canvas login.",
+        buttons: [
+          {
+            label: "Got It",
+            action: () => closeDialog(),
+            autoFocus: true,
+            color: "RED",
+          },
+        ],
+      });
+    } finally {
+      setLoginLoading(false);
+    }
   };
 
-  const handleSignUp = () => {
-    navigate("/signup");
+  const handleTokenLogin = () => {
+    setTokenLoginLoading(true);
+    // Navigate to settings page for token input
+    navigate("/settings");
   };
 
   return (
@@ -87,20 +148,25 @@ export function Home(): ReactElement {
           Improve the Canvas project grading experience with the perfect rubric.
         </p>
 
-        {/* Action Buttons */}
-        <div className="flex gap-4">
+        {/* Login Options */}
+        <div className="flex flex-col gap-4 w-full max-w-md">
           <button
-            className={`${hexToTailwindColor(cursorColor)} text-white cursor-pointer rounded-lg px-8 py-3 font-semibold hover:opacity-80 transition duration-300 transform hover:scale-105`}
-            onClick={handleLogin}
+            className={`${hexToTailwindColor(cursorColor)} text-white cursor-pointer rounded-lg px-8 py-4 font-semibold hover:opacity-80 transition duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed`}
+            onClick={() => void handleCanvasLogin()}
+            disabled={loginLoading}
           >
-            Log In
+            {loginLoading ? "Opening Canvas Login..." : "Login Using Canvas"}
           </button>
           <button
-            className="bg-gray-600 cursor-pointer text-white rounded-lg px-8 py-3 font-semibold hover:bg-gray-500 transition duration-300 transform hover:scale-105"
-            onClick={handleSignUp}
+            className="bg-gray-600 cursor-pointer text-white rounded-lg px-8 py-4 font-semibold hover:bg-gray-500 transition duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleTokenLogin}
+            disabled={tokenLoginLoading}
           >
-            Sign Up
+            Login Using Token
           </button>
+          <p className="text-sm text-gray-400 text-center mt-2">
+            Choose your preferred authentication method
+          </p>
         </div>
       </div>
       <Footer />

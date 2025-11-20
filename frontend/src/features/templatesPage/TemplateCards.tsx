@@ -143,8 +143,23 @@ export default function TemplateCard({
   };
 
   const removeTemplate = (key: string) => {
-    console.log("removing template", key);
-    handleRemoveTemplate(key);
+    openDialog({
+      title: "Confirm Template Deletion",
+      message: `Are you sure you want to delete "${template.title}"? This action cannot be undone.`,
+      buttons: [
+        {
+          autoFocus: true,
+          label: "Delete",
+          action: () => {
+            console.log("removing template", key);
+            handleRemoveTemplate(key);
+            closeDialog();
+          },
+          color: "RED",
+        },
+      ],
+      excludeCancel: false,
+    });
   };
 
   const renderCondensedView = () => {
@@ -308,20 +323,23 @@ export default function TemplateCard({
             <div className="flex gap-2 mt-4">
               <button
                 onClick={handleViewModeToggle}
-                className="transition-all ease-in-out duration-300 text-blue-400 hover:text-blue-500 focus:outline-none"
+                className="transition-all ease-in-out duration-300 text-blue-400 hover:text-blue-500 focus:outline-none font-semibold"
+                title="Edit this template"
               >
-                View
+                Edit
               </button>
               <button
                 onClick={() => copyTemplate(template?.key)}
-                className="transition-all ease-in-out duration-300 text-green-400 hover:text-green-500 focus:outline-none"
+                className="transition-all ease-in-out duration-300 text-green-400 hover:text-green-500 focus:outline-none font-semibold"
+                title="Duplicate this template"
               >
                 Copy
               </button>
               <button
-                onPointerDown={() => removeTemplate(template?.key)}
+                onClick={() => removeTemplate(template?.key)}
                 type="button"
-                className="transition-all ease-in-out duration-300 text-red-600 hover:text-red-700 focus:outline-none"
+                className="transition-all ease-in-out duration-300 text-red-600 hover:text-red-700 focus:outline-none font-semibold"
+                title="Delete this template"
               >
                 Remove
               </button>

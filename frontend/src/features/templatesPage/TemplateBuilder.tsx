@@ -245,20 +245,29 @@ export const TemplateBuilder = ({
 
   return (
     <>
-      <div className="flex justify-center items-center min-w-full h-full bg-gray-900 my-3 mr-3 rounded-lg">
+      <div className="flex justify-center items-center w-full bg-gray-900 rounded-lg">
         <form
-          className="flex flex-col h-full w-3/5 p-4 sm:p-6 md:p-4 my-3 gap-4 bg-gray-800 shadow-lg rounded-lg"
+          className="flex flex-col w-full p-4 sm:p-6 gap-4 bg-gray-800 shadow-lg rounded-lg"
           onSubmit={(event) => event.preventDefault()}
         >
           {viewOrEdit === "edit" ? (
-            <input
-              type="text"
-              value={editingTemplate?.title}
-              required={true}
-              onChange={(e) => handleDocumentTitleChange(e)}
-              className="rounded p-2 mb-2 hover:bg-gray-200 focus:bg-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none text-gray-800 w-full max-w-full text-lg truncate whitespace-nowrap"
-              placeholder={"Template title"}
-            />
+            <div className="mb-4 p-4 bg-blue-900 bg-opacity-30 border-2 border-blue-500 rounded-lg">
+              <label className="block text-blue-300 font-bold mb-2 text-sm uppercase tracking-wide">
+                Template Title *
+              </label>
+              <input
+                type="text"
+                value={editingTemplate?.title}
+                required={true}
+                onChange={(e) => handleDocumentTitleChange(e)}
+                className="rounded p-3 hover:bg-gray-200 focus:bg-gray-100 focus:ring-2 focus:ring-blue-500 focus:outline-none text-gray-800 w-full text-xl font-semibold"
+                placeholder="Enter template title..."
+                autoFocus
+              />
+              <p className="text-blue-200 text-xs mt-1">
+                Give your template a unique, descriptive name
+              </p>
+            </div>
           ) : (
             <h1 className="font-extrabold text-3xl sm:text-4xl mb-2 text-center">
               {viewingTemplate?.title}
@@ -283,7 +292,7 @@ export const TemplateBuilder = ({
             </div>
           </div>
 
-          <div className="mt-3 flex flex-col gap-2 h-[30vh] sm:h-[35vh] overflow-y-auto overflow-hidden scrollbar-thin scrollbar-thumb-gray-500 scrollbar-track-gray-800">
+          <div className="mt-3 flex flex-col gap-2 max-h-[50vh] min-h-[30vh] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-500 scrollbar-track-gray-800">
             {renderCriteriaCards()}
           </div>
 

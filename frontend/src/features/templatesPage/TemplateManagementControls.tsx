@@ -73,16 +73,25 @@ const TemplateManagementControls = () => {
 
   const renderBulkActionsToggle = () => {
     return (
-      <button
-        onClick={() => setShowBulkActions(!showBulkActions)}
-        className={`px-4 py-2 rounded-lg focus:outline-none  ${
-          showBulkActions
-            ? "bg-gray-700 text-white focus:ring-blue-500 focus:ring-2"
-            : "bg-gray-700 text-gray-300"
-        }`}
-      >
-        <i className="fas fa-tasks mr-2" /> Bulk Actions
-      </button>
+      <div className="flex flex-col items-center">
+        <button
+          onClick={() => setShowBulkActions(!showBulkActions)}
+          className={`px-4 py-2 rounded-lg focus:outline-none font-semibold transition-all ${
+            showBulkActions
+              ? "bg-blue-600 text-white ring-2 ring-blue-400 shadow-lg scale-105"
+              : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+          }`}
+          title={showBulkActions ? "Exit bulk selection mode" : "Enable bulk selection mode"}
+        >
+          <i className={`fas ${showBulkActions ? "fa-check-square" : "fa-tasks"} mr-2`} />
+          {showBulkActions ? "Bulk Mode: ON" : "Enable Bulk Mode"}
+        </button>
+        {showBulkActions && (
+          <p className="text-blue-300 text-xs mt-1 animate-pulse">
+            Select templates using checkboxes
+          </p>
+        )}
+      </div>
     );
   };
 
