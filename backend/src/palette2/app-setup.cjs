@@ -104,9 +104,16 @@ class PaletteApp {
         this.app.use(this.authService.app);
 
         // Serve static files (if frontend is built)
-        const distPath = path.join(__dirname, '../frontend/dist');
+        // In Electron mode, look for frontend in the app root
+        // In development/production, look relative to backend dist
+        const isElectron = process.env.ELECTRON_MODE === 'true';
+        const distPath = isElectron
+            ? path.join(process.resourcesPath || __dirname, '../../dist/frontend')
+            : path.join(__dirname, '../../dist/frontend');
+
         if (require('fs').existsSync(distPath)) {
             this.app.use(express.static(distPath));
+            console.log(`✅ Serving frontend from: ${distPath}`);
         } else {
             console.log('⚠️  Frontend not built, serving API-only mode');
         }
@@ -131,7 +138,11 @@ class PaletteApp {
 
         // Frontend fallback
         this.app.get('*', (req, res) => {
-            const indexPath = path.join(__dirname, '../frontend/dist/index.html');
+            const isElectron = process.env.ELECTRON_MODE === 'true';
+            const indexPath = isElectron
+                ? path.join(process.resourcesPath || __dirname, '../../dist/frontend/index.html')
+                : path.join(__dirname, '../../dist/frontend/index.html');
+
             if (require('fs').existsSync(indexPath)) {
                 res.sendFile(indexPath);
             } else {
@@ -208,12 +219,160 @@ class PaletteApp {
             }
         });
 
+        // Canvas browser-based login endpoint
+        router.post('/api/user/canvas-login', async (req, res) => {
+            try {
+                const { spawn } = require('child_process');
+                const fs = require('fs');
+                const os = require('os');
+
+                // Determine correct Python script path
+                const isElectron = process.env.ELECTRON_MODE === 'true';
+                const pythonScriptPath = isElectron
+                    ? path.join(process.resourcesPath || __dirname, 'python', 'canvas_login.py')
+                    : path.join(__dirname, '..', 'python', 'canvas_login.py');
+
+                console.log('🐍 Python script path:', pythonScriptPath);
+
+                // Check if Python script exists
+                if (!fs.existsSync(pythonScriptPath)) {
+                    console.error('❌ Python script not found at:', pythonScriptPath);
+                    return res.status(500).json({
+                        success: false,
+                        message: 'Python script not found',
+                        error: `Script path: ${pythonScriptPath}`
+                    });
+                }
+
+                // Create temp file path for output
+                const outputFile = path.join(os.tmpdir(), `palette_canvas_login_${Date.now()}.json`);
+                console.log('📄 Output file:', outputFile);
+
+                // Find Python executable - use pythonw.exe for GUI apps on Windows
+                const { execSync } = require('child_process');
+                let pythonCmd = 'pythonw'; // Use pythonw for GUI apps on Windows
+                try {
+                    // Try to find pythonw.exe first (Windows GUI version)
+                    const pythonwPath = execSync('where pythonw', { encoding: 'utf8' }).split('\n')[0].trim();
+                    console.log('🐍 Found pythonw at:', pythonwPath);
+                    pythonCmd = pythonwPath;
+                } catch (err) {
+                    // Fall back to regular python
+                    try {
+                        const pythonPath = execSync('where python', { encoding: 'utf8' }).split('\n')[0].trim();
+                        console.log('🐍 Found python at:', pythonPath);
+                        pythonCmd = pythonPath;
+                    } catch (err2) {
+                        console.log('⚠️  Using default "pythonw" command');
+                        pythonCmd = 'pythonw';
+                    }
+                }
+
+                console.log('✅ Launching Python process as detached for GUI access...');
+
+                // Launch Python as a completely detached process so it can show GUI
+                // Using pythonw.exe and proper Windows flags for GUI applications
+                const spawnOptions = {
+                    detached: true,
+                    stdio: 'ignore',
+                    windowsHide: false,
+                    shell: false
+                };
+
+                // On Windows, also set environment to ensure GUI can display
+                if (process.platform === 'win32') {
+                    spawnOptions.env = { ...process.env };
+                }
+
+                const pythonProcess = spawn(pythonCmd, [pythonScriptPath, outputFile], spawnOptions);
+
+                // Detach the process so it can run independently
+                pythonProcess.unref();
+
+                console.log('🚀 Python process launched (detached)');
+
+                // Poll for the output file (wait up to 120 seconds for user to log in)
+                const maxWaitTime = 120000; // 120 seconds
+                const pollInterval = 500; // Check every 500ms
+                let waited = 0;
+
+                const checkFile = async () => {
+                    while (waited < maxWaitTime) {
+                        if (fs.existsSync(outputFile)) {
+                            console.log('✅ Output file found, reading results...');
+                            try {
+                                const fileContent = fs.readFileSync(outputFile, 'utf8');
+                                const result = JSON.parse(fileContent);
+
+                                // Clean up the temp file
+                                try {
+                                    fs.unlinkSync(outputFile);
+                                } catch (cleanupErr) {
+                                    console.warn('⚠️  Could not delete temp file:', cleanupErr.message);
+                                }
+
+                                if (result.success && result.cookies) {
+                                    req.session.canvasCookies = result.cookies;
+                                    return res.json({
+                                        success: true,
+                                        data: { authenticated: true },
+                                        message: 'Canvas login successful'
+                                    });
+                                } else {
+                                    return res.status(500).json({
+                                        success: false,
+                                        message: 'Canvas login failed',
+                                        error: result.error || 'Unknown error'
+                                    });
+                                }
+                            } catch (readError) {
+                                return res.status(500).json({
+                                    success: false,
+                                    message: 'Failed to read login results',
+                                    error: String(readError)
+                                });
+                            }
+                        } // Close the if (fs.existsSync(outputFile)) block
+                        await new Promise(resolve => setTimeout(resolve, pollInterval));
+                        waited += pollInterval;
+                    }
+
+                    // Timeout - user didn't complete login in time
+                    console.error('⏱️  Timeout waiting for Canvas login');
+                    return res.status(408).json({
+                        success: false,
+                        message: 'Canvas login timeout',
+                        error: 'Login window did not complete within 120 seconds'
+                    });
+                };
+
+                // Start polling for the file
+                checkFile().catch(error => {
+                    console.error('❌ Error in file polling:', error);
+                    res.status(500).json({
+                        success: false,
+                        message: 'Canvas login failed',
+                        error: String(error)
+                    });
+                });
+
+            } catch (error) {
+                console.error('❌ Canvas login endpoint error:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Canvas login failed',
+                    error: String(error)
+                });
+            }
+        });
+
         // Middleware to ensure authentication for API routes (AFTER settings routes)
         router.use('/api', (req, res, next) => {
             if (req.path.startsWith('/auth') ||
                 req.path === '/health' ||
                 req.path.startsWith('/settings') ||
                 req.path.startsWith('/user/settings') ||
+                req.path.startsWith('/user/canvas-login') ||
                 req.path.startsWith('/courses') ||
                 req.path.startsWith('/templates') ||
                 req.path.startsWith('/tags')) {
@@ -229,6 +388,7 @@ class PaletteApp {
                 req.path.startsWith('/settings') ||
                 req.path.startsWith('/courses') ||
                 req.path.startsWith('/user/settings') ||
+                req.path.startsWith('/user/canvas-login') ||
                 req.path.startsWith('/templates') ||
                 req.path.startsWith('/tags')) {
                 return next();
@@ -598,6 +758,17 @@ class PaletteApp {
 
                 console.log(`✅ Created rubric: ${rubricData.name} (${rubricId}) for assignment ${req.params.assignment_id}`);
 
+                // Automatically sync to Canvas
+                try {
+                    console.log(`📤 Auto-syncing rubric to Canvas assignment ${req.params.assignment_id}...`);
+                    const token = this.authService.decryptToken(req.session.tokens.access_token);
+                    const canvasId = await this.syncService.uploadRubric(rubricId, req.params.course_id, req.params.assignment_id, token);
+                    console.log(`✅ Rubric synced to Canvas with ID: ${canvasId}`);
+                } catch (syncError) {
+                    console.error('⚠️  Canvas sync failed (rubric saved locally):', syncError.message);
+                    // Don't fail the request if sync fails - rubric is still saved locally
+                }
+
                 res.json({
                     success: true,
                     message: 'New rubric created successfully',
@@ -674,6 +845,17 @@ class PaletteApp {
 
                     console.log(`✅ Created rubric: ${rubricData.name} (${rubricId}) for assignment ${req.params.assignment_id}`);
 
+                    // Automatically sync to Canvas
+                    try {
+                        console.log(`📤 Auto-syncing rubric to Canvas assignment ${req.params.assignment_id}...`);
+                        const token = this.authService.decryptToken(req.session.tokens.access_token);
+                        const canvasId = await this.syncService.uploadRubric(rubricId, req.params.course_id, req.params.assignment_id, token);
+                        console.log(`✅ Rubric synced to Canvas with ID: ${canvasId}`);
+                    } catch (syncError) {
+                        console.error('⚠️  Canvas sync failed (rubric saved locally):', syncError.message);
+                        // Don't fail the request if sync fails - rubric is still saved locally
+                    }
+
                     return res.json({
                         success: true,
                         message: 'New rubric created successfully',
@@ -697,6 +879,16 @@ class PaletteApp {
                 const rubric = await this.db.getRubricTemplate(rubricId);
 
                 console.log(`✅ Updated rubric: ${rubricId} for assignment ${req.params.assignment_id}`);
+
+                // Automatically sync to Canvas
+                try {
+                    console.log(`📤 Auto-syncing updated rubric to Canvas assignment ${req.params.assignment_id}...`);
+                    const token = this.authService.decryptToken(req.session.tokens.access_token);
+                    const canvasId = await this.syncService.uploadRubric(rubricId, req.params.course_id, req.params.assignment_id, token);
+                    console.log(`✅ Rubric synced to Canvas with ID: ${canvasId}`);
+                } catch (syncError) {
+                    console.error('⚠️  Canvas sync failed (rubric saved locally):', syncError.message);
+                }
 
                 res.json({
                     success: true,
@@ -1822,6 +2014,7 @@ class PaletteApp {
                     data: {
                         userName: req.session.user?.name || "admin",
                         token: req.session.user ? "***" : (process.env.CANVAS_PERSONAL_TOKEN || ""),
+                        cookies: req.session.canvasCookies || {},
                         templateCriteria: [],
                         course_filter_presets: [],
                         preferences: {
@@ -1887,6 +2080,161 @@ class PaletteApp {
                 res.status(500).json({ error: error.message, success: false });
             }
         });
+
+        /* DUPLICATE ENDPOINT - COMMENTED OUT
+        // Canvas browser-based login endpoint
+        this.app.post('/api/user/canvas-login', async (req, res) => {
+            try {
+                const { spawn } = require('child_process');
+
+                // Determine correct Python script path for Electron vs development
+                const isElectron = process.env.ELECTRON_MODE === 'true';
+                const pythonScriptPath = isElectron
+                    ? path.join(process.resourcesPath || __dirname, 'python', 'canvas_login.py')
+                    : path.join(__dirname, '..', 'python', 'canvas_login.py');
+
+                console.log('🐍 Python script path:', pythonScriptPath);
+
+                // Check if Python script exists
+                const fs = require('fs');
+                if (!fs.existsSync(pythonScriptPath)) {
+                    console.error('❌ Python script not found at:', pythonScriptPath);
+                    return res.status(500).json({
+                        success: false,
+                        message: 'Python script not found',
+                        error: `Script path: ${pythonScriptPath}`,
+                        debug: {
+                            resourcesPath: process.resourcesPath,
+                            isElectron: isElectron,
+                            __dirname: __dirname
+                        }
+                    });
+                }
+
+                console.log('✅ Python script found, spawning process...');
+
+                // Find Python executable - try multiple common locations
+                const { execSync } = require('child_process');
+                let pythonCmd = 'python';
+                try {
+                    // Use 'where' on Windows to find Python
+                    const pythonPath = execSync('where python', { encoding: 'utf8' }).split('\n')[0].trim();
+                    console.log('🐍 Found Python at:', pythonPath);
+                    pythonCmd = pythonPath;
+                } catch (err) {
+                    console.log('⚠️  Could not find Python in PATH, using default "python" command');
+                }
+
+                // On Windows, use 'start' command to launch Python in a new window
+                // This allows the Qt GUI to display properly
+                const isWindows = process.platform === 'win32';
+
+                let pythonProcess;
+                if (isWindows) {
+                    // Use Windows 'start' command to launch in new process with GUI access
+                    // /B = don't create new window for start command itself
+                    // /WAIT = wait for the application to terminate
+                    pythonProcess = spawn('cmd.exe', ['/c', 'start', '/B', '/WAIT', pythonCmd, pythonScriptPath], {
+                        shell: false,
+                        stdio: ['ignore', 'pipe', 'pipe']
+                    });
+                } else {
+                    pythonProcess = spawn(pythonCmd, [pythonScriptPath], {
+                        shell: false,
+                        stdio: ['ignore', 'pipe', 'pipe']
+                    });
+                }
+                console.log('🚀 Python process spawned with PID:', pythonProcess.pid);
+
+                // Set a timeout to kill hung processes (60 seconds)
+                const processTimeout = setTimeout(() => {
+                    console.error('⏱️  Python process timeout - killing process');
+                    pythonProcess.kill();
+                }, 60000);
+
+                let stdout = '';
+                let stderr = '';
+
+                // Collect stdout
+                pythonProcess.stdout.on('data', (data) => {
+                    stdout += data.toString();
+                });
+
+                // Collect stderr
+                pythonProcess.stderr.on('data', (data) => {
+                    const errorMsg = data.toString();
+                    stderr += errorMsg;
+                    console.error('🐍 Python stderr:', errorMsg);
+                });
+
+                // Handle process completion
+                pythonProcess.on('close', (code) => {
+                    clearTimeout(processTimeout); // Clear the timeout
+                    console.log(`🐍 Python process exited with code: ${code}`);
+                    console.log('🐍 stdout:', stdout);
+                    console.log('🐍 stderr:', stderr);
+
+                    if (code === 0) {
+                        try {
+                            // Parse the JSON output from Python
+                            const result = JSON.parse(stdout);
+
+                            if (result.success && result.cookies) {
+                                // Store cookies in session for future requests
+                                req.session.canvasCookies = result.cookies;
+
+                                res.json({
+                                    success: true,
+                                    data: { authenticated: true },
+                                    message: 'Canvas login successful'
+                                });
+                            } else {
+                                res.status(500).json({
+                                    success: false,
+                                    message: 'Canvas login failed',
+                                    error: result.error || 'Unknown error'
+                                });
+                            }
+                        } catch (parseError) {
+                            res.status(500).json({
+                                success: false,
+                                message: 'Failed to parse login response',
+                                error: String(parseError)
+                            });
+                        }
+                        await new Promise(resolve => setTimeout(resolve, pollInterval));
+                        waited += pollInterval;
+                    }
+
+                    // Timeout - user didn't complete login in time
+                    console.error('⏱️  Timeout waiting for Canvas login');
+                    return res.status(408).json({
+                        success: false,
+                        message: 'Canvas login timeout',
+                        error: 'Login window did not complete within 120 seconds'
+                    });
+                };
+
+                // Start polling for the file
+                checkFile().catch(error => {
+                    console.error('❌ Error in file polling:', error);
+                    res.status(500).json({
+                        success: false,
+                        message: 'Canvas login failed',
+                        error: String(error)
+                    });
+                });
+
+            } catch (error) {
+                console.error('❌ Canvas login endpoint error:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Canvas login failed',
+                    error: String(error)
+                });
+            }
+        });
+        */
 
         this.app.get('/courses', async (req, res) => {
             try {

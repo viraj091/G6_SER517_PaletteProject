@@ -1,5 +1,8 @@
 {
   "name": "palette",
+  "version": "2.0.0",
+  "description": "An interactive rubric builder and grading assistant for Canvas",
+  "main": "electron-main.cjs",
   "private": true,
   "workspaces": [
     "frontend",
@@ -12,16 +15,69 @@
   "scripts": {
     "dev": "concurrently \"npm run dev -w frontend\" \"npm run dev -w backend\"",
     "dev:palette2": "node backend/src/palette2/server.cjs",
+    "dev:electron": "set NODE_ENV=development&& electron .",
     "build": "npm run build -w palette-types && npm run build -w backend",
     "build:all": "npm run build -w palette-types && npm run build -w backend && npm run build -w frontend",
+    "build:electron": "npm run build:all && electron-builder --win",
+    "build:electron:dir": "npm run build:all && electron-builder --dir",
     "clean": "npm run clean --workspaces",
     "lint": "eslint . ",
     "prettier:fix": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
     "prettier:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,md}\"",
     "test": "concurrently \"npm run test -w frontend\" \"npm run test -w backend\"",
-    "push": "npm run build:all && npm run prettier:check && npm run lint && npm run test && echo '\n\nLooks great, ready to push!'"
+    "push": "npm run build:all && npm run prettier:check && npm run lint && npm run test && echo '\n\nLooks great, ready to push!'",
+    "install:python": "pip install -r backend/src/python/requirements.txt",
+    "postinstall": "npm run install:python || echo 'Warning: Python dependencies not installed. Run npm run install:python manually.'"
+  },
+  "build": {
+    "appId": "com.palette.app",
+    "productName": "Palette",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "asarUnpack": [
+      "backend/**/*",
+      "data/**/*"
+    ],
+    "files": [
+      "electron-main.cjs",
+      "setupEvents.js",
+      "backend/src/palette2/**/*",
+      "backend/dist/**/*",
+      "palette-types/**/*",
+      "data/**/*",
+      "node_modules/**/*",
+      "!node_modules/.cache",
+      "!**/*.map",
+      "!frontend/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend/src/python",
+        "to": "python",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Palette"
+    }
   },
   "devDependencies": {
-    "concurrently": "^9.0.1"
+    "concurrently": "^9.0.1",
+    "electron": "^39.2.1",
+    "electron-builder": "^26.0.12"
   }
 }
