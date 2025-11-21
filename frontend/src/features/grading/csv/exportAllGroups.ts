@@ -18,7 +18,8 @@ export function exportAllGroupsCSV(
   Object.entries(groupedSubmissions).forEach(([, submissions]) => {
     submissions.forEach((submission) => {
       const totalScore = rubric.criteria.reduce((sum, criterion) => {
-        const score = submission.rubricAssessment?.[criterion.id]?.points || 0;
+        const criterionKey = criterion.key || criterion.id;
+        const score = submission.rubricAssessment?.[criterionKey]?.points || 0;
         return sum + score;
       }, 0);
 
@@ -36,11 +37,13 @@ export function exportAllGroupsCSV(
         `"${submission.user.name.replace(/"/g, '""')}"`,
         submission.user.asurite,
         `"${groupName.replace(/"/g, '""')}"`, // Ensure CSV safety for group names
-        ...rubric.criteria.map(
-          (criterion) =>
-            submission.rubricAssessment?.[criterion.id]?.points.toString() ||
-            "0",
-        ),
+        ...rubric.criteria.map((criterion) => {
+          const criterionKey = criterion.key || criterion.id;
+          return (
+            submission.rubricAssessment?.[criterionKey]?.points.toString() ||
+            "0"
+          );
+        }),
         totalScore.toString(),
       ];
 

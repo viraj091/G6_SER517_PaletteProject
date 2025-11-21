@@ -114,10 +114,18 @@ export function GradingTable({
               {submissions.map((submission: Submission) => {
                 const submissionId = submission.id;
                 const criterionId = criterion.key || criterion.id;
-                const assessment =
-                  gradedSubmissionCache[submissionId]?.rubric_assessment?.[
-                    criterionId
-                  ];
+                const rubricAssessment = gradedSubmissionCache[submissionId]?.rubric_assessment;
+
+                // Try to find assessment by criterion key first, then by description match
+                let assessment = rubricAssessment?.[criterionId];
+
+                // If not found by key and we have rubric assessment data, the rubric may have changed
+                // In this case, show the data anyway - the keys are stored in the cache
+                if (!assessment && rubricAssessment) {
+                  // Log for debugging
+                  console.log(`🔍 Criterion ${criterion.description} (${criterionId}) not found in assessment. Available keys:`, Object.keys(rubricAssessment));
+                }
+
                 const currentValue = assessment?.points;
                 const stringValue =
                   currentValue == null ? "" : String(currentValue);

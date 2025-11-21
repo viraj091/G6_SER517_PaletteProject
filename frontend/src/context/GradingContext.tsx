@@ -133,16 +133,106 @@ export const GradingProvider = ({ children }: { children: ReactNode }) => {
     rubric: Rubric,
     mode: "restore" | "canvas",
   ) => {
+    console.log(`🎯 initializeGradingCache called with mode: ${mode}`);
+    console.log(`🎯 Number of submissions: ${submissions.length}`);
+    console.log(`🎯 Number of rubric criteria: ${rubric.criteria.length}`);
+
     const localCacheRaw = localStorage.getItem("gradedSubmissionCache");
     const localCache = localCacheRaw
       ? (JSON.parse(localCacheRaw) as SavedGrades)
       : {};
 
+    console.log(`🎯 LocalCache has ${Object.keys(localCache).length} submissions`);
+    console.log(`🎯 LocalCache keys:`, Object.keys(localCache));
+    console.log(`🎯 React state cache has ${Object.keys(gradedSubmissionCache).length} submissions`);
+    console.log(`🎯 React state cache keys:`, Object.keys(gradedSubmissionCache));
+
+    // Check if we already have data in the current React state for these submissions
+    // We need to check if the data actually has POINTS values, not just empty rubric_assessment objects
+    const submissionIds = submissions.map(s => s.id);
+    console.log(`🎯 Looking for submission IDs:`, submissionIds);
+
+    const hasActualGradedDataInState = submissionIds.some(id => {
+      const cached = gradedSubmissionCache[id];
+      console.log(`🎯 Checking submission ${id} in state:`, !!cached, cached?.rubric_assessment ? Object.keys(cached.rubric_assessment) : 'no rubric_assessment');
+      if (!cached?.rubric_assessment) return false;
+      // Check if any criterion has an actual points value (not empty string)
+      const hasPoints = Object.values(cached.rubric_assessment).some(
+        criterion => criterion.points !== "" && criterion.points !== undefined
+      );
+      console.log(`🎯 Submission ${id} has points: ${hasPoints}`);
+      return hasPoints;
+    });
+
+    console.log(`🎯 Has actual graded data in state: ${hasActualGradedDataInState}`);
+    if (hasActualGradedDataInState) {
+      // Log the actual points values for debugging
+      submissionIds.forEach(id => {
+        const cached = gradedSubmissionCache[id];
+        if (cached?.rubric_assessment) {
+          const points = Object.entries(cached.rubric_assessment).map(([k, v]) => `${k}: ${v.points}`);
+          console.log(`🎯 Submission ${id} points:`, points);
+        }
+      });
+    }
+
+    // In restore mode, first check React state, then localStorage
+    if (mode === "restore") {
+      // If React state already has actual graded data for these submissions, use it directly
+      if (hasActualGradedDataInState) {
+        console.log(`🎯 Restore mode: Already have actual graded data in React state, skipping`);
+        return;
+      }
+
+      // Check if localStorage has valid data with actual points values for these submissions
+      const hasLocalCacheForSubmissions = submissionIds.some(id => {
+        const cached = localCache[id] || localCache[String(id)];
+        if (!cached?.rubric_assessment) return false;
+        return Object.values(cached.rubric_assessment).some(
+          criterion => criterion.points !== "" && criterion.points !== undefined
+        );
+      });
+
+      if (hasLocalCacheForSubmissions) {
+        console.log(`🎯 Restore mode: Using localStorage cache directly`);
+        setGradedSubmissionCache((prev) => ({
+          ...prev,
+          ...localCache,
+        }));
+        return;
+      }
+    }
+
+    // In canvas mode, if we already have actual graded data in state, don't overwrite it
+    if (mode === "canvas" && hasActualGradedDataInState) {
+      console.log(`🎯 Skipping canvas mode - already have actual graded data in state`);
+      return;
+    }
+
     const newCache: Record<number, PaletteGradedSubmission> = {};
 
+    // Log localCache keys for debugging
+    if (mode === "restore") {
+      console.log(`🎯 LocalCache keys:`, Object.keys(localCache));
+      console.log(`🎯 Submission IDs we're looking for:`, submissions.map(s => s.id));
+    }
+
     submissions.forEach((submission) => {
-      const saved = mode === "restore" ? localCache[submission.id] : undefined;
+      // Try both number and string keys since JSON parsing may convert them
+      const saved = mode === "restore"
+        ? (localCache[submission.id] || localCache[String(submission.id)])
+        : undefined;
       const canvas = submission.rubricAssessment;
+
+      console.log(`🎯 Submission ${submission.id}:`);
+      console.log(`   - Has saved data: ${!!saved}`);
+      console.log(`   - Has rubricAssessment: ${!!canvas}`);
+      if (saved?.rubric_assessment) {
+        console.log(`   - Saved rubric_assessment keys:`, Object.keys(saved.rubric_assessment));
+      }
+      if (canvas) {
+        console.log(`   - Canvas rubricAssessment keys:`, Object.keys(canvas));
+      }
 
       const rubric_assessment: PaletteGradedSubmission["rubric_assessment"] =
         {};

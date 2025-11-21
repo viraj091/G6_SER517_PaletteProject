@@ -2,6 +2,7 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
+const axios = require('axios');
 
 // Import new services
 const DatabaseManager = require('./services/database_manager.cjs');
@@ -164,6 +165,98 @@ class PaletteApp {
     setupAPIRoutes() {
         const router = express.Router();
 
+        // Helper function to make Canvas API requests with either cookies or tokens
+        const makeCanvasRequest = async (req, method, endpoint, data = null) => {
+            const fs = require('fs');
+            const settingsPath = path.join(__dirname, '..', '..', '..', 'data', 'settings.json');
+
+            // Try cookie-based authentication first
+            if (req.session.tokens && req.session.tokens.token_type === 'cookies') {
+                try {
+                    if (fs.existsSync(settingsPath)) {
+                        const persistentSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                        const canvasCookies = persistentSettings.canvasCookies || {};
+
+                        // Convert cookies object to cookie string
+                        const cookieString = Object.entries(canvasCookies)
+                            .map(([key, value]) => `${key}=${value}`)
+                            .join('; ');
+
+                        // Make request with cookies
+                        const config = {
+                            method: method,
+                            url: `${this.config.canvas.baseUrl}${endpoint}`,
+                            headers: { 'Cookie': cookieString }
+                        };
+
+                        if (data) {
+                            config.data = data;
+                        }
+
+                        const response = await axios(config);
+                        return response.data;
+                    }
+                } catch (cookieError) {
+                    console.error('❌ Cookie-based request failed:', cookieError.message);
+                    console.log('🔄 Falling back to Personal Access Token...');
+
+                    // Fall back to Personal Access Token
+                    const tokenPath = path.join(__dirname, '..', '..', '..', 'data', 'canvas-token.json');
+                    console.log('🔍 Checking for token file at:', tokenPath);
+                    console.log('🔍 Token file exists:', fs.existsSync(tokenPath));
+                    if (fs.existsSync(tokenPath)) {
+                        console.log('🔍 Token file found, attempting to read...');
+                        try {
+                            const tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+                            if (tokenData.token) {
+                                const config = {
+                                    method: method,
+                                    url: `${this.config.canvas.baseUrl}${endpoint}`,
+                                    headers: { 'Authorization': `Bearer ${tokenData.token}` }
+                                };
+
+                                if (data) {
+                                    config.data = data;
+                                }
+
+                                console.log('✅ Using Personal Access Token fallback');
+                                const response = await axios(config);
+                                console.log('✅ Personal Access Token request succeeded!');
+                                return response.data;
+                            } else {
+                                console.error('❌ Token file exists but no token found');
+                            }
+                        } catch (tokenError) {
+                            console.error('❌ Personal Access Token request failed:', tokenError.message);
+                            console.error('   Status:', tokenError.response?.status);
+                            console.error('   Data:', JSON.stringify(tokenError.response?.data));
+                        }
+                    } else {
+                        console.error('❌ Token file not found at:', tokenPath);
+                    }
+
+                    // If no fallback available, re-throw original error
+                    throw cookieError;
+                }
+            } else {
+                // Token-based authentication
+                const accessToken = this.authService.decryptToken(req.session.tokens.access_token);
+
+                const config = {
+                    method: method,
+                    url: `${this.config.canvas.baseUrl}${endpoint}`,
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                };
+
+                if (data) {
+                    config.data = data;
+                }
+
+                const response = await axios(config);
+                return response.data;
+            }
+        };
+
         // Settings routes (for personal token like previous version) - BEFORE auth middleware
         router.get('/api/settings', async (req, res) => {
             try {
@@ -203,6 +296,20 @@ class PaletteApp {
                     token_type: 'personal',
                     expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000) // 1 year
                 };
+
+                // Save token to separate file for fallback use (won't be overwritten by cookies)
+                try {
+                    const fs = require('fs');
+                    const tokenPath = path.join(__dirname, '..', '..', '..', 'data', 'canvas-token.json');
+                    const tokenData = {
+                        token: token, // Store unencrypted for API fallback
+                        lastUpdate: new Date().toISOString()
+                    };
+                    fs.writeFileSync(tokenPath, JSON.stringify(tokenData, null, 2));
+                    console.log('✅ Personal Access Token saved to canvas-token.json');
+                } catch (saveError) {
+                    console.error('Failed to save token:', saveError.message);
+                }
 
                 res.json({
                     success: true,
@@ -313,11 +420,62 @@ class PaletteApp {
 
                                 if (result.success && result.cookies) {
                                     req.session.canvasCookies = result.cookies;
-                                    return res.json({
-                                        success: true,
-                                        data: { authenticated: true },
-                                        message: 'Canvas login successful'
-                                    });
+
+                                    // Save cookies to persistent storage
+                                    const settingsPath = path.join(__dirname, '..', '..', '..', 'data', 'settings.json');
+                                    try {
+                                        const persistentSettings = {
+                                            canvasCookies: result.cookies,
+                                            lastLogin: new Date().toISOString()
+                                        };
+                                        fs.writeFileSync(settingsPath, JSON.stringify(persistentSettings, null, 2));
+                                        console.log('✅ Canvas cookies saved to persistent storage');
+                                    } catch (saveErr) {
+                                        console.error('⚠️  Could not save cookies to persistent storage:', saveErr.message);
+                                    }
+
+                                    // Fetch user info from Canvas using the cookies
+                                    try {
+                                        const cookieString = Object.entries(result.cookies)
+                                            .map(([key, value]) => `${key}=${value}`)
+                                            .join('; ');
+
+                                        const userResponse = await axios.get(`${this.config.canvas.baseUrl}/api/v1/users/self`, {
+                                            headers: {
+                                                'Cookie': cookieString
+                                            }
+                                        });
+
+                                        // Store user session
+                                        req.session.user = {
+                                            id: userResponse.data.id,
+                                            name: userResponse.data.name,
+                                            email: userResponse.data.email || userResponse.data.login_id,
+                                            canvas_id: userResponse.data.id
+                                        };
+
+                                        // Store authentication type
+                                        req.session.tokens = {
+                                            token_type: 'cookies',
+                                            expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000) // 1 year
+                                        };
+
+                                        console.log('✅ User session created:', req.session.user.name);
+
+                                        return res.json({
+                                            success: true,
+                                            data: { authenticated: true, user: req.session.user },
+                                            message: 'Canvas login successful'
+                                        });
+                                    } catch (userFetchError) {
+                                        console.error('⚠️  Could not fetch user info from Canvas:', userFetchError.message);
+                                        // Still return success since cookies are saved
+                                        return res.json({
+                                            success: true,
+                                            data: { authenticated: true },
+                                            message: 'Canvas login successful (cookies saved, but user info unavailable)'
+                                        });
+                                    }
                                 } else {
                                     return res.status(500).json({
                                         success: false,
@@ -366,6 +524,33 @@ class PaletteApp {
             }
         });
 
+        // Check authentication status
+        router.get('/api/user/check-auth', (req, res) => {
+            try {
+                // Check if Canvas cookies exist in settings.json
+                const settingsPath = path.join(process.cwd(), 'data', 'settings.json');
+                const fs = require('fs');
+
+                if (!fs.existsSync(settingsPath)) {
+                    return res.json({ authenticated: false });
+                }
+
+                const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                const hasCanvasCookies = settings.canvasCookies && Object.keys(settings.canvasCookies).length > 0;
+
+                // Check if Canvas token exists
+                const tokenPath = path.join(process.cwd(), 'data', 'canvas-token.json');
+                const hasToken = fs.existsSync(tokenPath);
+
+                res.json({
+                    authenticated: hasCanvasCookies || hasToken
+                });
+            } catch (error) {
+                console.error('Error checking auth:', error);
+                res.json({ authenticated: false });
+            }
+        });
+
         // Middleware to ensure authentication for API routes (AFTER settings routes)
         router.use('/api', (req, res, next) => {
             if (req.path.startsWith('/auth') ||
@@ -373,6 +558,7 @@ class PaletteApp {
                 req.path.startsWith('/settings') ||
                 req.path.startsWith('/user/settings') ||
                 req.path.startsWith('/user/canvas-login') ||
+                req.path.startsWith('/user/check-auth') ||
                 req.path.startsWith('/courses') ||
                 req.path.startsWith('/templates') ||
                 req.path.startsWith('/tags')) {
@@ -389,6 +575,7 @@ class PaletteApp {
                 req.path.startsWith('/courses') ||
                 req.path.startsWith('/user/settings') ||
                 req.path.startsWith('/user/canvas-login') ||
+                req.path.startsWith('/user/check-auth') ||
                 req.path.startsWith('/templates') ||
                 req.path.startsWith('/tags')) {
                 return next();
@@ -604,29 +791,16 @@ class PaletteApp {
                     return res.status(401).json({ error: 'Authentication required' });
                 }
 
-                // Get valid access token first
+                // Handle both token-based and cookie-based authentication
                 try {
-                    const fiveMinutes = 5 * 60 * 1000;
-                    if (req.session.tokens && req.session.tokens.expires_at - Date.now() < fiveMinutes) {
-                        if (req.session.tokens.token_type !== 'personal') {
-                            const refreshToken = this.authService.decryptToken(req.session.tokens.refresh_token);
-                            const newTokens = await this.authService.refreshAccessToken(refreshToken);
-                            req.session.tokens = {
-                                access_token: this.authService.encryptToken(newTokens.access_token),
-                                refresh_token: this.authService.encryptToken(newTokens.refresh_token || refreshToken),
-                                expires_at: Date.now() + (newTokens.expires_in * 1000)
-                            };
-                        }
-                    }
-
-                    const accessToken = this.authService.decryptToken(req.session.tokens.access_token);
-                    const courses = await this.authService.getUserCourses(accessToken);
-
+                    // Include all enrollment types (teacher, ta, student, etc.) and only active courses
+                    const courses = await makeCanvasRequest(req, 'GET', '/api/v1/courses?enrollment_type=teacher&enrollment_state=active&per_page=100');
                     res.json({
                         success: true,
                         data: courses
                     });
                 } catch (tokenError) {
+                    console.error('Error fetching courses:', tokenError.message);
                     return res.json({
                         success: false,
                         error: 'Authentication failed',
@@ -668,29 +842,17 @@ class PaletteApp {
                     return res.status(401).json({ error: 'Authentication required' });
                 }
 
-                // Get valid access token first
+                // Get assignments using helper function
+                // Include all assignments (past, overdue, undated, ungraded, unsubmitted, upcoming, future)
+                // per_page=100 ensures we get more results, order_by=due_at for chronological order
                 try {
-                    const fiveMinutes = 5 * 60 * 1000;
-                    if (req.session.tokens && req.session.tokens.expires_at - Date.now() < fiveMinutes) {
-                        if (req.session.tokens.token_type !== 'personal') {
-                            const refreshToken = this.authService.decryptToken(req.session.tokens.refresh_token);
-                            const newTokens = await this.authService.refreshAccessToken(refreshToken);
-                            req.session.tokens = {
-                                access_token: this.authService.encryptToken(newTokens.access_token),
-                                refresh_token: this.authService.encryptToken(newTokens.refresh_token || refreshToken),
-                                expires_at: Date.now() + (newTokens.expires_in * 1000)
-                            };
-                        }
-                    }
-
-                    const accessToken = this.authService.decryptToken(req.session.tokens.access_token);
-                    const assignments = await this.authService.getCourseAssignments(accessToken, req.params.id);
-
+                    const assignments = await makeCanvasRequest(req, 'GET', `/api/v1/courses/${req.params.id}/assignments?per_page=100&order_by=due_at`);
                     res.json({
                         success: true,
                         data: assignments
                     });
                 } catch (tokenError) {
+                    console.error('Error fetching assignments:', tokenError.message);
                     return res.json({
                         success: false,
                         error: 'Authentication failed',
@@ -761,18 +923,56 @@ class PaletteApp {
                 // Automatically sync to Canvas
                 try {
                     console.log(`📤 Auto-syncing rubric to Canvas assignment ${req.params.assignment_id}...`);
-                    const token = this.authService.decryptToken(req.session.tokens.access_token);
-                    const canvasId = await this.syncService.uploadRubric(rubricId, req.params.course_id, req.params.assignment_id, token);
+                    // Get access token if available (for OAuth/personal token auth)
+                    let token = req.session.tokens?.access_token ? this.authService.decryptToken(req.session.tokens.access_token) : null;
+
+                    // For cookie-based auth, load cookies from settings.json
+                    let cookies = null;
+                    if (!token && req.session.tokens?.token_type === 'cookies') {
+                        const fs = require('fs');
+                        const settingsPath = path.join(__dirname, '..', '..', '..', 'data', 'settings.json');
+                        if (fs.existsSync(settingsPath)) {
+                            const persistentSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                            cookies = persistentSettings.canvasCookies || {};
+                        }
+                    }
+
+                    const canvasId = await this.syncService.uploadRubric(rubricId, req.params.course_id, req.params.assignment_id, token, cookies);
                     console.log(`✅ Rubric synced to Canvas with ID: ${canvasId}`);
                 } catch (syncError) {
                     console.error('⚠️  Canvas sync failed (rubric saved locally):', syncError.message);
                     // Don't fail the request if sync fails - rubric is still saved locally
                 }
 
+                // Refetch rubric to get updated Canvas IDs after sync
+                const updatedRubric = await this.db.getRubricTemplate(rubricId);
+
+                // Transform to frontend format
+                const frontendRubric = {
+                    id: updatedRubric.canvas_id || -1,
+                    title: updatedRubric.name,
+                    pointsPossible: updatedRubric.points_possible || 0,
+                    key: updatedRubric.id,
+                    criteria: (updatedRubric.criteria || []).map(criterion => ({
+                        id: criterion.canvas_criterion_id || '',
+                        description: criterion.description,
+                        longDescription: criterion.long_description || '',
+                        pointsPossible: criterion.points || 0,
+                        key: criterion.id,
+                        ratings: (criterion.ratings || []).map(rating => ({
+                            id: rating.canvas_rating_id || '',
+                            description: rating.description,
+                            longDescription: rating.long_description || '',
+                            points: rating.points || 0,
+                            key: rating.id
+                        }))
+                    }))
+                };
+
                 res.json({
                     success: true,
                     message: 'New rubric created successfully',
-                    data: rubric
+                    data: frontendRubric
                 });
             } catch (error) {
                 console.error('Error creating rubric:', error);
@@ -848,18 +1048,78 @@ class PaletteApp {
                     // Automatically sync to Canvas
                     try {
                         console.log(`📤 Auto-syncing rubric to Canvas assignment ${req.params.assignment_id}...`);
-                        const token = this.authService.decryptToken(req.session.tokens.access_token);
-                        const canvasId = await this.syncService.uploadRubric(rubricId, req.params.course_id, req.params.assignment_id, token);
+                        const fs = require('fs');
+
+                        // Get access token if available (for OAuth/personal token auth)
+                        let token = req.session.tokens?.access_token ? this.authService.decryptToken(req.session.tokens.access_token) : null;
+
+                        // Fallback to token from canvas-token.json file
+                        if (!token) {
+                            const tokenPath = path.join(__dirname, '..', '..', '..', 'data', 'canvas-token.json');
+                            if (fs.existsSync(tokenPath)) {
+                                const tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+                                if (tokenData.token) {
+                                    token = tokenData.token;
+                                    console.log('🔑 Using token from canvas-token.json for rubric CREATE sync');
+                                }
+                            }
+                        }
+
+                        // Fallback to personal access token from environment variable
+                        if (!token && process.env.CANVAS_PERSONAL_TOKEN) {
+                            token = process.env.CANVAS_PERSONAL_TOKEN;
+                            console.log('🔑 Using CANVAS_PERSONAL_TOKEN from environment for rubric CREATE sync');
+                        }
+
+                        // For cookie-based auth, load cookies from settings.json as last resort
+                        let cookies = null;
+                        if (!token) {
+                            const settingsPath = path.join(__dirname, '..', '..', '..', 'data', 'settings.json');
+                            if (fs.existsSync(settingsPath)) {
+                                const persistentSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                                if (persistentSettings.canvasCookies && Object.keys(persistentSettings.canvasCookies).length > 0) {
+                                    cookies = persistentSettings.canvasCookies;
+                                    console.log('🍪 Loaded cookies from settings.json for rubric CREATE sync');
+                                }
+                            }
+                        }
+
+                        const canvasId = await this.syncService.uploadRubric(rubricId, req.params.course_id, req.params.assignment_id, token, cookies);
                         console.log(`✅ Rubric synced to Canvas with ID: ${canvasId}`);
                     } catch (syncError) {
                         console.error('⚠️  Canvas sync failed (rubric saved locally):', syncError.message);
                         // Don't fail the request if sync fails - rubric is still saved locally
                     }
 
+                    // Refetch rubric to get updated Canvas IDs after sync
+                    const updatedRubric = await this.db.getRubricTemplate(rubricId);
+
+                    // Transform to frontend format
+                    const frontendRubric = {
+                        id: updatedRubric.canvas_id || -1,
+                        title: updatedRubric.name,
+                        pointsPossible: updatedRubric.points_possible || 0,
+                        key: updatedRubric.id,
+                        criteria: (updatedRubric.criteria || []).map(criterion => ({
+                            id: criterion.canvas_criterion_id || '',
+                            description: criterion.description,
+                            longDescription: criterion.long_description || '',
+                            pointsPossible: criterion.points || 0,
+                            key: criterion.id,
+                            ratings: (criterion.ratings || []).map(rating => ({
+                                id: rating.canvas_rating_id || '',
+                                description: rating.description,
+                                longDescription: rating.long_description || '',
+                                points: rating.points || 0,
+                                key: rating.id
+                            }))
+                        }))
+                    };
+
                     return res.json({
                         success: true,
                         message: 'New rubric created successfully',
-                        data: rubric
+                        data: frontendRubric
                     });
                 }
 
@@ -883,17 +1143,77 @@ class PaletteApp {
                 // Automatically sync to Canvas
                 try {
                     console.log(`📤 Auto-syncing updated rubric to Canvas assignment ${req.params.assignment_id}...`);
-                    const token = this.authService.decryptToken(req.session.tokens.access_token);
-                    const canvasId = await this.syncService.uploadRubric(rubricId, req.params.course_id, req.params.assignment_id, token);
+                    const fs = require('fs');
+
+                    // Get access token if available (for OAuth/personal token auth)
+                    let token = req.session.tokens?.access_token ? this.authService.decryptToken(req.session.tokens.access_token) : null;
+
+                    // Fallback to token from canvas-token.json file
+                    if (!token) {
+                        const tokenPath = path.join(__dirname, '..', '..', '..', 'data', 'canvas-token.json');
+                        if (fs.existsSync(tokenPath)) {
+                            const tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+                            if (tokenData.token) {
+                                token = tokenData.token;
+                                console.log('🔑 Using token from canvas-token.json for rubric UPDATE sync');
+                            }
+                        }
+                    }
+
+                    // Fallback to personal access token from environment variable
+                    if (!token && process.env.CANVAS_PERSONAL_TOKEN) {
+                        token = process.env.CANVAS_PERSONAL_TOKEN;
+                        console.log('🔑 Using CANVAS_PERSONAL_TOKEN from environment for rubric UPDATE sync');
+                    }
+
+                    // For cookie-based auth, load cookies from settings.json as last resort
+                    let cookies = null;
+                    if (!token) {
+                        const settingsPath = path.join(__dirname, '..', '..', '..', 'data', 'settings.json');
+                        if (fs.existsSync(settingsPath)) {
+                            const persistentSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                            if (persistentSettings.canvasCookies && Object.keys(persistentSettings.canvasCookies).length > 0) {
+                                cookies = persistentSettings.canvasCookies;
+                                console.log('🍪 Loaded cookies from settings.json for rubric UPDATE sync');
+                            }
+                        }
+                    }
+
+                    const canvasId = await this.syncService.uploadRubric(rubricId, req.params.course_id, req.params.assignment_id, token, cookies);
                     console.log(`✅ Rubric synced to Canvas with ID: ${canvasId}`);
                 } catch (syncError) {
                     console.error('⚠️  Canvas sync failed (rubric saved locally):', syncError.message);
                 }
 
+                // Refetch rubric to get updated Canvas IDs after sync
+                const updatedRubric = await this.db.getRubricTemplate(rubricId);
+
+                // Transform to frontend format - calculate points from ratings
+                const frontendRubric = {
+                    id: updatedRubric.canvas_id || -1,
+                    title: updatedRubric.name,
+                    pointsPossible: updatedRubric.criteria?.reduce((sum, c) => sum + Math.max(...(c.ratings || []).map(r => r.points || 0), 0), 0) || 0,
+                    key: updatedRubric.id,
+                    criteria: (updatedRubric.criteria || []).map(criterion => ({
+                        id: criterion.canvas_criterion_id || '',
+                        description: criterion.description,
+                        longDescription: criterion.long_description || '',
+                        pointsPossible: Math.max(...(criterion.ratings || []).map(r => r.points || 0), 0),
+                        key: criterion.id,
+                        ratings: (criterion.ratings || []).map(rating => ({
+                            id: rating.canvas_rating_id || '',
+                            description: rating.description,
+                            longDescription: rating.long_description || '',
+                            points: rating.points || 0,
+                            key: rating.id
+                        }))
+                    }))
+                };
+
                 res.json({
                     success: true,
                     message: 'Rubric updated successfully!',
-                    data: rubric
+                    data: frontendRubric
                 });
             } catch (error) {
                 console.error('Error updating rubric:', error);
@@ -975,20 +1295,14 @@ class PaletteApp {
                     console.log('📡 No local rubric found, checking Canvas...');
 
                     try {
-                        const token = this.authService.decryptToken(req.session.tokens.access_token);
-
                         // Fetch assignment from Canvas (includes rubric if attached)
-                        const assignmentResponse = await fetch(
-                            `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}?include[]=rubric`,
-                            {
-                                headers: {
-                                    'Authorization': `Bearer ${token}`
-                                }
-                            }
+                        const assignment = await makeCanvasRequest(
+                            req,
+                            'GET',
+                            `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}?include[]=rubric`
                         );
 
-                        if (assignmentResponse.ok) {
-                            const assignment = await assignmentResponse.json();
+                        if (assignment) {
 
                             if (assignment.rubric && assignment.rubric.length > 0) {
                                 console.log(`✅ Found Canvas rubric for assignment ${req.params.assignment_id}`);
@@ -1030,7 +1344,7 @@ class PaletteApp {
                                     // Import the Canvas rubric into local database
                                     const canvasRubric = assignment.rubric;
                                     const rubricData = {
-                                    name: assignment.name || 'Imported Rubric',
+                                    name: assignment.rubric_settings?.title || assignment.name || 'Imported Rubric',
                                     description: assignment.description || '',
                                     points_possible: assignment.points_possible || 0,
                                     criteria: canvasRubric.map(criterion => ({
@@ -1087,17 +1401,30 @@ class PaletteApp {
 
                 console.log(`✅ Found rubric: ${rubric.name} (${rubric.id})`);
 
-                // Transform database format to frontend format
+                // Debug: Log criteria count and sample points
+                console.log(`📊 Criteria count: ${rubric.criteria?.length || 0}`);
+                if (rubric.criteria?.length > 0) {
+                    const sampleCriterion = rubric.criteria[0];
+                    console.log(`📊 Sample criterion ratings: ${JSON.stringify(sampleCriterion.ratings?.map(r => r.points))}`);
+                }
+
+                // Transform database format to frontend format - calculate points from ratings
+                const calculatedTotal = (rubric.criteria || []).reduce((sum, c) => {
+                    const maxPoints = Math.max(...(c.ratings || []).map(r => r.points || 0), 0);
+                    return sum + maxPoints;
+                }, 0);
+                console.log(`📊 Calculated total points: ${calculatedTotal}`);
+
                 const frontendRubric = {
                     id: rubric.canvas_id || -1, // Use canvas_id if available, otherwise -1 for local rubrics (truthy value)
                     title: rubric.name,
-                    pointsPossible: rubric.points_possible || 0,
+                    pointsPossible: rubric.criteria?.reduce((sum, c) => sum + Math.max(...(c.ratings || []).map(r => r.points || 0), 0), 0) || 0,
                     key: rubric.id, // Use the UUID as the React key
                     criteria: (rubric.criteria || []).map(criterion => ({
                         id: criterion.canvas_criterion_id || '',
                         description: criterion.description,
                         longDescription: criterion.long_description || '',
-                        pointsPossible: criterion.points || 0,
+                        pointsPossible: Math.max(...(criterion.ratings || []).map(r => r.points || 0), 0),
                         key: criterion.id, // Use UUID as React key
                         ratings: (criterion.ratings || []).map(rating => ({
                             id: rating.canvas_rating_id || '',
@@ -1158,23 +1485,20 @@ class PaletteApp {
                     });
                 }
 
-                const token = this.authService.decryptToken(req.session.tokens.access_token);
-
                 // Fetch submissions from Canvas with rubric assessments and comments
-                const submissionsResponse = await fetch(
-                    `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}/submissions?include[]=user&include[]=rubric_assessment&include[]=submission_comments&per_page=100`,
-                    {
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    }
+                const submissions = await makeCanvasRequest(
+                    req,
+                    'GET',
+                    `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}/submissions?include[]=user&include[]=rubric_assessment&include[]=submission_comments&per_page=100`
                 );
 
-                if (!submissionsResponse.ok) {
-                    throw new Error(`Canvas API error: ${submissionsResponse.status}`);
+                // Debug: Log rubric assessment data
+                console.log(`📊 Fetched ${submissions.length} submissions from Canvas`);
+                const submissionsWithGrades = submissions.filter(s => s.rubric_assessment);
+                console.log(`📊 ${submissionsWithGrades.length} submissions have rubric assessments`);
+                if (submissionsWithGrades.length > 0) {
+                    console.log(`📊 Sample rubric assessment:`, JSON.stringify(submissionsWithGrades[0].rubric_assessment, null, 2));
                 }
-
-                const submissions = await submissionsResponse.json();
 
                 // Transform Canvas rubric assessments to use local criterion IDs
                 // Get our local rubric template
@@ -1189,31 +1513,25 @@ class PaletteApp {
                     const localRubric = await this.db.getRubricTemplate(mapping.rubric_id);
 
                     // Fetch Canvas rubric to create ID mapping
-                    const canvasAssignmentResponse = await fetch(
-                        `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}?include[]=rubric`,
-                        {
-                            headers: {
-                                'Authorization': `Bearer ${token}`
-                            }
-                        }
+                    const canvasAssignment = await makeCanvasRequest(
+                        req,
+                        'GET',
+                        `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}?include[]=rubric`
                     );
 
-                    if (canvasAssignmentResponse.ok) {
-                        const canvasAssignment = await canvasAssignmentResponse.json();
-                        const canvasRubric = canvasAssignment.rubric;
+                    const canvasRubric = canvasAssignment.rubric;
 
-                        if (canvasRubric && localRubric) {
-                            // Create mapping: Canvas ID -> local ID (by matching descriptions)
-                            canvasRubric.forEach(canvasCriterion => {
-                                const matchingLocal = localRubric.criteria.find(
-                                    local => local.description === canvasCriterion.description
-                                );
-                                if (matchingLocal) {
-                                    canvasToLocalIdMap[canvasCriterion.id] = matchingLocal.id;
-                                }
-                            });
-                            console.log(`🔄 Created rubric ID mapping for ${Object.keys(canvasToLocalIdMap).length} criteria`);
-                        }
+                    if (canvasRubric && localRubric) {
+                        // Create mapping: Canvas ID -> local ID (by matching descriptions)
+                        canvasRubric.forEach(canvasCriterion => {
+                            const matchingLocal = localRubric.criteria.find(
+                                local => local.description === canvasCriterion.description
+                            );
+                            if (matchingLocal) {
+                                canvasToLocalIdMap[canvasCriterion.id] = matchingLocal.id;
+                            }
+                        });
+                        console.log(`🔄 Created rubric ID mapping for ${Object.keys(canvasToLocalIdMap).length} criteria`);
                     }
 
                     // Transform all submissions' rubric assessments
@@ -1229,62 +1547,56 @@ class PaletteApp {
                             submission.rubric_assessment = transformedAssessment;
                         }
                     });
+
+                    // Debug: Log transformed rubric assessment
+                    console.log('🔄 Canvas to Local ID mapping:', JSON.stringify(canvasToLocalIdMap, null, 2));
+                    const transformedWithGrades = submissions.filter(s => s.rubric_assessment && Object.keys(s.rubric_assessment).length > 0);
+                    console.log(`📊 After transformation: ${transformedWithGrades.length} submissions have rubric assessments with local IDs`);
+                    if (transformedWithGrades.length > 0) {
+                        console.log(`📊 Sample transformed rubric assessment:`, JSON.stringify(transformedWithGrades[0].rubric_assessment, null, 2));
+                    }
                 }
 
                 // First, fetch the assignment details to get the group_category_id
-                const assignmentResponse = await fetch(
-                    `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}`,
-                    {
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    }
+                const assignment = await makeCanvasRequest(
+                    req,
+                    'GET',
+                    `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}`
                 );
 
                 let groupedSubmissions = { "No Group": [] };
 
-                if (assignmentResponse.ok) {
-                    const assignment = await assignmentResponse.json();
+                if (assignment) {
                     console.log(`📋 Assignment group_category_id: ${assignment.group_category_id || 'none'}`);
 
                     if (assignment.group_category_id) {
                         // First, fetch assignment overrides to see which groups are assigned
-                        const overridesResponse = await fetch(
-                            `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}/overrides`,
-                            {
-                                headers: {
-                                    'Authorization': `Bearer ${token}`
-                                }
-                            }
-                        );
-
                         let assignedGroupIds = new Set();
 
-                        if (overridesResponse.ok) {
-                            const overrides = await overridesResponse.json();
+                        try {
+                            const overrides = await makeCanvasRequest(
+                                req,
+                                'GET',
+                                `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}/overrides`
+                            );
                             // Filter for group overrides (not student or section overrides)
                             const groupOverrides = overrides.filter(override => override.group_id);
                             assignedGroupIds = new Set(groupOverrides.map(override => override.group_id));
                             console.log(`🎯 Assignment has ${assignedGroupIds.size} group overrides:`, Array.from(assignedGroupIds));
-                        } else {
+                        } catch (error) {
                             console.log('⚠️  Could not fetch assignment overrides, will show all groups in category');
                         }
 
                         // Fetch groups from the group category
-                        const groupsResponse = await fetch(
-                            `${process.env.CANVAS_BASE_URL}/api/v1/group_categories/${assignment.group_category_id}/groups?per_page=100`,
-                            {
-                                headers: {
-                                    'Authorization': `Bearer ${token}`
-                                }
-                            }
+                        const allGroups = await makeCanvasRequest(
+                            req,
+                            'GET',
+                            `/api/v1/group_categories/${assignment.group_category_id}/groups?per_page=100`
                         );
 
-                        console.log(`🔍 Groups endpoint status: ${groupsResponse.status}`);
+                        console.log(`🔍 Groups endpoint completed successfully`);
 
-                        if (groupsResponse.ok) {
-                            const allGroups = await groupsResponse.json();
-
+                        if (allGroups) {
                             // Filter groups to only those assigned (if overrides exist)
                             const groups = assignedGroupIds.size > 0
                                 ? allGroups.filter(group => assignedGroupIds.has(group.id))
@@ -1299,17 +1611,13 @@ class PaletteApp {
                                 console.log(`  📦 Group: ${group.name} (ID: ${group.id})`);
 
                                 // Fetch members for each group
-                                const membersResponse = await fetch(
-                                    `${process.env.CANVAS_BASE_URL}/api/v1/groups/${group.id}/users`,
-                                    {
-                                        headers: {
-                                            'Authorization': `Bearer ${token}`
-                                        }
-                                    }
+                                const members = await makeCanvasRequest(
+                                    req,
+                                    'GET',
+                                    `/api/v1/groups/${group.id}/users`
                                 );
 
-                                if (membersResponse.ok) {
-                                    const members = await membersResponse.json();
+                                if (members) {
                                     console.log(`    👥 Members in ${group.name}: ${members.length}`);
                                     for (const member of members) {
                                         userGroupMap[member.id] = {
@@ -1420,21 +1728,48 @@ class PaletteApp {
                 console.log(`📤 Submitting grade for submission ${req.params.submission_id}`);
 
                 // Auto-authenticate if needed
-                if (!req.session.user && process.env.CANVAS_PERSONAL_TOKEN) {
+                if (!req.session.user) {
                     try {
-                        const userInfo = await this.authService.getUserInfo(process.env.CANVAS_PERSONAL_TOKEN);
-                        req.session.user = {
-                            id: userInfo.id,
-                            name: userInfo.name,
-                            email: userInfo.email,
-                            canvas_id: userInfo.id
-                        };
-                        req.session.tokens = {
-                            access_token: this.authService.encryptToken(process.env.CANVAS_PERSONAL_TOKEN),
-                            token_type: 'personal',
-                            expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000)
-                        };
-                        console.log('🔐 Auto-authenticated for grade submission');
+                        const fs = require('fs');
+                        const settingsPath = path.join(__dirname, '..', '..', '..', 'data', 'settings.json');
+
+                        // Check if using cookie-based authentication
+                        if (fs.existsSync(settingsPath)) {
+                            const persistentSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                            const canvasCookies = persistentSettings.canvasCookies || {};
+
+                            if (Object.keys(canvasCookies).length > 0) {
+                                // Extract user name from SSONAME cookie if available
+                                const userName = canvasCookies.SSONAME || 'Canvas User';
+
+                                req.session.user = {
+                                    id: 'cookie-user',
+                                    name: userName,
+                                    email: `${userName}@canvas`,
+                                    canvas_id: 'cookie-user'
+                                };
+                                req.session.tokens = {
+                                    token_type: 'cookies',
+                                    expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                                };
+                                console.log('🔐 Auto-authenticated with cookies for grade submission');
+                            }
+                        } else if (process.env.CANVAS_PERSONAL_TOKEN) {
+                            // Fallback to personal token if available
+                            const userInfo = await this.authService.getUserInfo(process.env.CANVAS_PERSONAL_TOKEN);
+                            req.session.user = {
+                                id: userInfo.id,
+                                name: userInfo.name,
+                                email: userInfo.email,
+                                canvas_id: userInfo.id
+                            };
+                            req.session.tokens = {
+                                access_token: this.authService.encryptToken(process.env.CANVAS_PERSONAL_TOKEN),
+                                token_type: 'personal',
+                                expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                            };
+                            console.log('🔐 Auto-authenticated with personal token for grade submission');
+                        }
                     } catch (error) {
                         console.log('⚠️  Auto-authentication failed:', error.message);
                     }
@@ -1447,65 +1782,67 @@ class PaletteApp {
                     });
                 }
 
-                const token = this.authService.decryptToken(req.session.tokens.access_token);
-
                 // Get the grade data from request body
                 const gradeData = req.body;
                 console.log('📝 Received grade data from frontend:', JSON.stringify(gradeData, null, 2));
 
                 // Fetch the Canvas rubric to get the correct criterion IDs
-                const assignmentResponse = await fetch(
-                    `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}?include[]=rubric`,
-                    {
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    }
+                const assignment = await makeCanvasRequest(
+                    req,
+                    'GET',
+                    `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}?include[]=rubric`
                 );
 
-                if (!assignmentResponse.ok) {
-                    throw new Error('Failed to fetch assignment rubric from Canvas');
-                }
-
-                const assignment = await assignmentResponse.json();
                 const canvasRubric = assignment.rubric;
+                console.log('🔍 Canvas rubric from assignment:', canvasRubric ? `Found (${canvasRubric.length} criteria)` : 'NOT FOUND');
 
                 // Transform rubric_assessment to use Canvas criterion IDs
                 let transformedAssessment = {};
-                if (gradeData.rubric_assessment && canvasRubric) {
-                    // Create mapping from Canvas criterion description to Canvas ID
-                    const canvasCriterionMap = {};
-                    canvasRubric.forEach(criterion => {
-                        canvasCriterionMap[criterion.description] = criterion.id;
-                    });
+                if (gradeData.rubric_assessment && canvasRubric && canvasRubric.length > 0) {
+                    console.log('📊 Canvas rubric criteria:', canvasRubric.map(c => ({ id: c.id, desc: c.description })));
+                    console.log('📥 Incoming assessment:', JSON.stringify(gradeData.rubric_assessment, null, 2));
 
-                    // Get our local rubric to map keys to descriptions
-                    const mapping = await this.db.get(`
-                        SELECT rubric_id FROM assignment_rubrics
-                        WHERE assignment_id = ? AND course_id = ?
-                    `, [req.params.assignment_id, req.params.course_id]);
+                    // SIMPLIFIED APPROACH: Match incoming assessment points to Canvas criteria by order/description
+                    // This works because the frontend sends assessment data in the same order as criteria
+                    const assessmentValues = Object.values(gradeData.rubric_assessment);
 
-                    if (mapping) {
-                        const localRubric = await this.db.getRubricTemplate(mapping.rubric_id);
-                        console.log('🔍 Local rubric criteria IDs/keys:', localRubric.criteria.map(c => ({ id: c.id, key: c.key, desc: c.description })));
-                        console.log('🔍 Incoming assessment keys:', Object.keys(gradeData.rubric_assessment));
+                    // Match by index if we have the same number of criteria
+                    if (assessmentValues.length === canvasRubric.length) {
+                        canvasRubric.forEach((criterion, index) => {
+                            if (assessmentValues[index]) {
+                                transformedAssessment[criterion.id] = assessmentValues[index];
+                                console.log(`✅ Matched Canvas criterion "${criterion.description}" (ID: ${criterion.id}) with points: ${assessmentValues[index].points}`);
+                            }
+                        });
+                    } else {
+                        // Fallback: Try to match by attempting description lookup from local rubric
+                        console.log('⚠️  Assessment count mismatch, trying description-based matching...');
 
-                        // Transform each assessment entry
-                        for (const [localKey, assessment] of Object.entries(gradeData.rubric_assessment)) {
-                            console.log(`🔍 Processing localKey: "${localKey}"`);
-                            // Find criterion by local key (try key field first, fallback to id)
-                            const criterion = localRubric.criteria.find(c => (c.key || c.id) === localKey);
-                            console.log(`🔍 Found criterion:`, criterion ? { id: criterion.id, key: criterion.key, desc: criterion.description } : 'NOT FOUND');
-                            if (criterion) {
-                                const canvasId = canvasCriterionMap[criterion.description];
-                                console.log(`🔍 Canvas ID for "${criterion.description}": ${canvasId}`);
-                                if (canvasId) {
-                                    transformedAssessment[canvasId] = assessment;
+                        // Get our local rubric to map keys to descriptions
+                        const mapping = await this.db.get(`
+                            SELECT rubric_id FROM assignment_rubrics
+                            WHERE assignment_id = ? AND course_id = ?
+                        `, [req.params.assignment_id, req.params.course_id]);
+
+                        if (mapping) {
+                            const localRubric = await this.db.getRubricTemplate(mapping.rubric_id);
+
+                            // Transform each assessment entry by matching descriptions
+                            for (const [localKey, assessment] of Object.entries(gradeData.rubric_assessment)) {
+                                // Find criterion by local key (try key field first, fallback to id)
+                                const criterion = localRubric.criteria.find(c => (c.key || c.id) === localKey);
+                                if (criterion) {
+                                    // Match Canvas criterion by description
+                                    const canvasCriterion = canvasRubric.find(cc => cc.description === criterion.description);
+                                    if (canvasCriterion) {
+                                        transformedAssessment[canvasCriterion.id] = assessment;
+                                        console.log(`✅ Matched Canvas criterion "${canvasCriterion.description}" (ID: ${canvasCriterion.id})`);
+                                    }
                                 }
                             }
                         }
-                        console.log('🔍 Final transformed assessment:', transformedAssessment);
                     }
+                    console.log('🔍 Final transformed assessment:', transformedAssessment);
                 }
 
                 // Calculate total score from rubric assessment
@@ -1519,9 +1856,27 @@ class PaletteApp {
                 }
 
                 // Prepare Canvas submission data
-                const canvasSubmissionData = {
-                    rubric_assessment: transformedAssessment
-                };
+                const canvasSubmissionData = {};
+
+                // Only include rubric assessment if it's not empty
+                if (Object.keys(transformedAssessment).length > 0) {
+                    // Clean up assessment data - remove empty rating_id and comments if not provided
+                    Object.keys(transformedAssessment).forEach(criterionId => {
+                        const assessment = transformedAssessment[criterionId];
+                        // Remove rating_id if empty
+                        if (assessment.rating_id === '') {
+                            delete assessment.rating_id;
+                        }
+                        // Remove comments if empty
+                        if (assessment.comments === '') {
+                            delete assessment.comments;
+                        }
+                    });
+                    canvasSubmissionData.rubric_assessment = transformedAssessment;
+                    console.log('✅ Including rubric assessment with Canvas criteria');
+                } else {
+                    console.log('⚠️  No Canvas rubric found or no matching criteria - submitting grade only');
+                }
 
                 // Add total score if we have one
                 if (totalScore > 0) {
@@ -1554,25 +1909,13 @@ class PaletteApp {
 
                 console.log('📝 Transformed grade data for Canvas:', JSON.stringify(canvasSubmissionData, null, 2));
 
-                const response = await fetch(
-                    `${process.env.CANVAS_BASE_URL}/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}/submissions/${req.params.submission_id}`,
-                    {
-                        method: 'PUT',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(canvasSubmissionData)
-                    }
+                const result = await makeCanvasRequest(
+                    req,
+                    'PUT',
+                    `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}/submissions/${req.params.submission_id}`,
+                    canvasSubmissionData
                 );
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.log('❌ Canvas API error:', response.status, errorText);
-                    throw new Error(`Canvas API error: ${response.status} - ${errorText}`);
-                }
-
-                const result = await response.json();
                 console.log('✅ Grade submitted successfully');
 
                 res.json({
@@ -1900,13 +2243,237 @@ class PaletteApp {
             }
         });
 
+        // Save draft grades locally (for offline work)
+        router.post('/api/courses/:course_id/assignments/:assignment_id/draft-grades', async (req, res) => {
+            try {
+                const { course_id, assignment_id } = req.params;
+                const { grades, rubricKey, criterionDescriptions } = req.body;
+
+                if (!grades) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Grades data is required'
+                    });
+                }
+
+                console.log(`💾 Saving draft grades for course ${course_id}, assignment ${assignment_id}`);
+                console.log(`💾 Number of submissions being saved: ${Object.keys(grades).length}`);
+                console.log(`💾 Submission IDs being saved:`, Object.keys(grades));
+                console.log(`💾 Rubric key:`, rubricKey);
+
+                // Store grades along with criterion descriptions for remapping
+                const dataToSave = {
+                    grades,
+                    rubricKey,
+                    criterionDescriptions: criterionDescriptions || {}
+                };
+
+                // Use INSERT OR REPLACE to upsert
+                await this.db.run(`
+                    INSERT OR REPLACE INTO draft_grades (course_id, assignment_id, grades_json, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                `, [course_id, assignment_id, JSON.stringify(dataToSave)]);
+
+                res.json({
+                    success: true,
+                    message: 'Draft grades saved locally'
+                });
+            } catch (error) {
+                console.error('Error saving draft grades:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // Get draft grades (restore from local storage)
+        router.get('/api/courses/:course_id/assignments/:assignment_id/draft-grades', async (req, res) => {
+            try {
+                const { course_id, assignment_id } = req.params;
+
+                console.log(`📖 Loading draft grades for course ${course_id}, assignment ${assignment_id}`);
+
+                const result = await this.db.get(`
+                    SELECT grades_json, updated_at FROM draft_grades
+                    WHERE course_id = ? AND assignment_id = ?
+                `, [course_id, assignment_id]);
+
+                if (!result) {
+                    console.log(`📖 No draft grades found in database`);
+                    return res.json({
+                        success: true,
+                        data: null,
+                        message: 'No draft grades found'
+                    });
+                }
+
+                const savedData = JSON.parse(result.grades_json);
+
+                // Handle both old format (just grades) and new format (grades + metadata)
+                const grades = savedData.grades || savedData;
+                const rubricKey = savedData.rubricKey || null;
+                const criterionDescriptions = savedData.criterionDescriptions || {};
+
+                console.log(`📖 Found draft grades with ${Object.keys(grades).length} submissions`);
+                console.log(`📖 Submission IDs in saved grades:`, Object.keys(grades));
+                console.log(`📖 Saved rubric key:`, rubricKey);
+                console.log(`📖 Criterion descriptions:`, Object.keys(criterionDescriptions));
+
+                res.json({
+                    success: true,
+                    data: grades,
+                    rubricKey,
+                    criterionDescriptions,
+                    updatedAt: result.updated_at
+                });
+            } catch (error) {
+                console.error('Error loading draft grades:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // Delete draft grades (after submitting to Canvas)
+        router.delete('/api/courses/:course_id/assignments/:assignment_id/draft-grades', async (req, res) => {
+            try {
+                const { course_id, assignment_id } = req.params;
+
+                console.log(`🗑️ Deleting draft grades for course ${course_id}, assignment ${assignment_id}`);
+
+                await this.db.run(`
+                    DELETE FROM draft_grades
+                    WHERE course_id = ? AND assignment_id = ?
+                `, [course_id, assignment_id]);
+
+                res.json({
+                    success: true,
+                    message: 'Draft grades deleted'
+                });
+            } catch (error) {
+                console.error('Error deleting draft grades:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
         this.app.use(router);
     }
 
     setupLegacyRoutes() {
+        // Helper function to make Canvas API requests with either cookies or tokens
+        const makeCanvasRequest = async (req, method, endpoint, data = null) => {
+            const fs = require('fs');
+            const settingsPath = path.join(__dirname, '..', '..', '..', 'data', 'settings.json');
+
+            // Try cookie-based authentication first
+            if (req.session.tokens && req.session.tokens.token_type === 'cookies') {
+                try {
+                    if (fs.existsSync(settingsPath)) {
+                        const persistentSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                        const canvasCookies = persistentSettings.canvasCookies || {};
+
+                        // Convert cookies object to cookie string
+                        const cookieString = Object.entries(canvasCookies)
+                            .map(([key, value]) => `${key}=${value}`)
+                            .join('; ');
+
+                        // Make request with cookies
+                        const config = {
+                            method: method,
+                            url: `${this.config.canvas.baseUrl}${endpoint}`,
+                            headers: { 'Cookie': cookieString }
+                        };
+
+                        if (data) {
+                            config.data = data;
+                        }
+
+                        const response = await axios(config);
+                        return response.data;
+                    }
+                } catch (cookieError) {
+                    console.error('❌ Cookie-based request failed:', cookieError.message);
+                    console.log('🔄 Falling back to Personal Access Token...');
+
+                    // Fall back to Personal Access Token
+                    const tokenPath = path.join(__dirname, '..', '..', '..', 'data', 'canvas-token.json');
+                    console.log('🔍 Checking for token file at:', tokenPath);
+                    console.log('🔍 Token file exists:', fs.existsSync(tokenPath));
+                    if (fs.existsSync(tokenPath)) {
+                        console.log('🔍 Token file found, attempting to read...');
+                        try {
+                            const tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+                            if (tokenData.token) {
+                                const config = {
+                                    method: method,
+                                    url: `${this.config.canvas.baseUrl}${endpoint}`,
+                                    headers: { 'Authorization': `Bearer ${tokenData.token}` }
+                                };
+
+                                if (data) {
+                                    config.data = data;
+                                }
+
+                                console.log('✅ Using Personal Access Token fallback');
+                                const response = await axios(config);
+                                console.log('✅ Personal Access Token request succeeded!');
+                                return response.data;
+                            } else {
+                                console.error('❌ Token file exists but no token found');
+                            }
+                        } catch (tokenError) {
+                            console.error('❌ Personal Access Token request failed:', tokenError.message);
+                            console.error('   Status:', tokenError.response?.status);
+                            console.error('   Data:', JSON.stringify(tokenError.response?.data));
+                        }
+                    } else {
+                        console.error('❌ Token file not found at:', tokenPath);
+                    }
+
+                    // If no fallback available, re-throw original error
+                    throw cookieError;
+                }
+            } else {
+                // Token-based authentication
+                const accessToken = this.authService.decryptToken(req.session.tokens.access_token);
+
+                const config = {
+                    method: method,
+                    url: `${this.config.canvas.baseUrl}${endpoint}`,
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                };
+
+                if (data) {
+                    config.data = data;
+                }
+
+                const response = await axios(config);
+                return response.data;
+            }
+        };
+
         // Legacy Frontend Compatibility Routes (mounted directly on app to avoid router conflicts)
         this.app.get('/user/settings', async (req, res) => {
             try {
+                // Load Canvas cookies from persistent storage
+                const fs = require('fs');
+                const settingsPath = path.join(__dirname, '..', '..', '..', 'data', 'settings.json');
+                let canvasCookies = {};
+
+                try {
+                    if (fs.existsSync(settingsPath)) {
+                        const persistentSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                        canvasCookies = persistentSettings.canvasCookies || {};
+                    }
+                } catch (err) {
+                    console.log('No persistent Canvas cookies found');
+                }
+
                 const settings = {
                     authenticated: !!req.session.user,
                     token_type: req.session.tokens?.token_type || 'none',
@@ -1915,6 +2482,7 @@ class PaletteApp {
                     data: {
                         userName: req.session.user?.name || "admin",
                         token: req.session.user ? "***" : "",
+                        cookies: canvasCookies,
                         templateCriteria: [],
                         course_filter_presets: [],
                         preferences: {

@@ -29,6 +29,7 @@ export function Navbar() {
    * page.
    */
   const navOptions = {
+    "/course-selection": "Home",
     "/templates": "Templates",
     "/rubric-builder": "Builder",
     "/grading": "Grading",
@@ -64,8 +65,21 @@ export function Navbar() {
     setUserAnchor(null);
   };
 
-  const handleLogoutClicked = () => {
-    navigate("/");
+  const handleLogoutClicked = async () => {
+    try {
+      // Call backend logout endpoint
+      await fetch("http://localhost:3000/api/user/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      // Set flag to indicate user logged out
+      localStorage.setItem("userLoggedOut", "true");
+      // Navigate to home page
+      navigate("/");
+    }
   };
 
   function handleSettingsClicked() {

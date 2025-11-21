@@ -92,9 +92,10 @@ class CanvasSyncService {
         }
     }
 
-    async uploadRubric(localRubricId, courseId, assignmentId = null, accessToken = null) {
+    async uploadRubric(localRubricId, courseId, assignmentId = null, accessToken = null, cookies = null) {
         try {
-            if (!this.isOnline) {
+            // Skip online check if using cookies (cookie-based auth bypasses connectivity monitoring)
+            if (!this.isOnline && !cookies) {
                 await this.db.addToSyncQueue('rubric', localRubricId, 'create');
                 return null;
             }
@@ -144,11 +145,19 @@ class CanvasSyncService {
                 };
             }
 
-            // Use provided access token if available, otherwise use default
+            // Build headers - use cookies or access token
             const headers = {
                 'Content-Type': 'application/json'
             };
-            if (accessToken) {
+
+            if (cookies && Object.keys(cookies).length > 0) {
+                // Use cookie-based authentication
+                const cookieString = Object.entries(cookies)
+                    .map(([key, value]) => `${key}=${value}`)
+                    .join('; ');
+                headers['Cookie'] = cookieString;
+                console.log('🍪 Using cookie-based authentication for rubric upload');
+            } else if (accessToken) {
                 headers['Authorization'] = `Bearer ${accessToken}`;
             } else {
                 headers['Authorization'] = `Bearer ${this.accessToken}`;
@@ -157,7 +166,19 @@ class CanvasSyncService {
             console.log(`📤 Sending rubric to Canvas: POST /courses/${courseId}/rubrics`);
             console.log('📋 Rubric data:', JSON.stringify(canvasRubric, null, 2));
 
-            const response = await this.api.post(`/courses/${courseId}/rubrics`, canvasRubric, { headers });
+            let response;
+            if (cookies && Object.keys(cookies).length > 0) {
+                // Use axios directly when using cookies to avoid default Authorization header
+                response = await axios.post(
+                    `${this.baseUrl}/api/v1/courses/${courseId}/rubrics`,
+                    canvasRubric,
+                    { headers }
+                );
+            } else {
+                // Use pre-configured instance for token-based auth
+                response = await this.api.post(`/courses/${courseId}/rubrics`, canvasRubric, { headers });
+            }
+
             const canvasRubricData = response.data;
 
             // Log full Canvas response to debug ID issue

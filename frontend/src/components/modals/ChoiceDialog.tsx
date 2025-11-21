@@ -7,22 +7,22 @@ export const ChoiceDialog = () => {
   if (!isOpen || !dialogConfig) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70">
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4">
+      <div className="bg-gradient-to-br from-gray-800 via-gray-900 to-gray-700 rounded-xl shadow-2xl p-8 w-full max-w-lg border-2 border-gray-600">
         {/* Title */}
-        <div className="mb-4">
-          <h2 className="text-center text-xl font-semibold text-gray-800">
+        <div className="mb-6">
+          <h2 className="text-center text-2xl font-bold text-white">
             {dialogConfig.title}
           </h2>
         </div>
 
         {/* Message */}
-        <div className="mb-6 flex justify-center">
-          <p className="text-gray-700 text-center">{dialogConfig.message}</p>
+        <div className="mb-8 flex justify-center">
+          <p className="text-gray-300 text-center text-lg leading-relaxed">{dialogConfig.message}</p>
         </div>
 
         {/* Buttons */}
-        <div className="flex justify-around space-x-4">
+        <div className="flex flex-col sm:flex-row justify-center gap-4">
           {dialogConfig.buttons.map((button, index) => (
             <PaletteActionButton
               color={button.color ?? "BLUE"}

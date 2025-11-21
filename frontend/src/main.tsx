@@ -13,6 +13,7 @@ import {
   RubricBuilderMain,
   SettingsMain,
 } from "@/features";
+import { CourseSelectionPage } from "@/features/courseSelection/CourseSelectionPage";
 import {
   AssignmentProvider,
   CourseProvider,
@@ -35,6 +36,7 @@ createRoot(document.getElementById("root")!).render(
               <Router>
                 <Routes>
                   <Route path="/" element={<Home />} />
+                  <Route path="/course-selection" element={<CourseSelectionPage />} />
                   <Route path="/templates" element={<TemplatesMain />} />
                   <Route
                     path="/rubric-builder"

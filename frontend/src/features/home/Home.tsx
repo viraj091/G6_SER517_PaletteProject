@@ -1,6 +1,6 @@
 import { ReactElement, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Footer, Header } from "@/components";
+import { Footer, Header, Dialog } from "@/components";
 import { useFetch } from "@/hooks";
 import { useChoiceDialog } from "@/context";
 import Paint from "./Paint";
@@ -26,9 +26,15 @@ export function Home(): ReactElement {
   const navigate = useNavigate();
   const [loginLoading, setLoginLoading] = useState(false);
   const [tokenLoginLoading, setTokenLoginLoading] = useState(false);
+  const [showTokenDialog, setShowTokenDialog] = useState(false);
+  const [tokenInput, setTokenInput] = useState("");
   const { openDialog, closeDialog } = useChoiceDialog();
 
   const { fetchData: canvasLogin } = useFetch("/user/canvas-login", {
+    method: "POST",
+  });
+
+  const { fetchData: tokenLogin } = useFetch<{ user: any }>("/settings/token", {
     method: "POST",
   });
 
@@ -67,6 +73,8 @@ export function Home(): ReactElement {
       const response = await canvasLogin();
 
       if (response.success) {
+        // Clear logout flag on successful login
+        localStorage.removeItem("userLoggedOut");
         openDialog({
           title: "Success",
           message: "Canvas login successful! Redirecting to Palette...",
@@ -115,9 +123,75 @@ export function Home(): ReactElement {
   };
 
   const handleTokenLogin = () => {
+    setShowTokenDialog(true);
+  };
+
+  const handleTokenSubmit = async () => {
+    if (!tokenInput.trim()) {
+      openDialog({
+        title: "Error",
+        message: "Please enter a valid Canvas personal access token.",
+        buttons: [
+          {
+            label: "Got It",
+            action: () => closeDialog(),
+            autoFocus: true,
+            color: "RED",
+          },
+        ],
+      });
+      return;
+    }
+
     setTokenLoginLoading(true);
-    // Navigate to settings page for token input
-    navigate("/settings");
+    try {
+      const response = await fetch("http://localhost:3000/api/settings/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token: tokenInput }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Clear logout flag on successful login
+        localStorage.removeItem("userLoggedOut");
+        setShowTokenDialog(false);
+        setTokenInput("");
+        navigate("/rubric-builder");
+      } else {
+        openDialog({
+          title: "Error",
+          message: data.error || "Token login failed. Please check your token and try again.",
+          buttons: [
+            {
+              label: "Got It",
+              action: () => closeDialog(),
+              autoFocus: true,
+              color: "RED",
+            },
+          ],
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      openDialog({
+        title: "Error",
+        message: "An error occurred during token login.",
+        buttons: [
+          {
+            label: "Got It",
+            action: () => closeDialog(),
+            autoFocus: true,
+            color: "RED",
+          },
+        ],
+      });
+    } finally {
+      setTokenLoginLoading(false);
+    }
   };
 
   return (
@@ -170,6 +244,74 @@ export function Home(): ReactElement {
         </div>
       </div>
       <Footer />
+
+      {/* Token Login Dialog */}
+      <Dialog
+        isOpen={showTokenDialog}
+        onClose={() => {
+          setShowTokenDialog(false);
+          setTokenInput("");
+          setTokenLoginLoading(false);
+        }}
+        title="Login with Canvas Personal Access Token"
+      >
+        <div className="space-y-4">
+          <div className="bg-gray-600 p-4 rounded-lg">
+            <h3 className="text-lg font-semibold mb-2 text-white">How to Generate a Canvas Access Token:</h3>
+            <ol className="list-decimal list-inside space-y-2 text-gray-200">
+              <li>Log in to your Canvas account</li>
+              <li>Go to Account Settings (click on your profile picture)</li>
+              <li>Scroll down to "Approved Integrations"</li>
+              <li>Click "+ New Access Token"</li>
+              <li>Enter a purpose (e.g., "Palette Integration")</li>
+              <li>Set an expiration date (optional)</li>
+              <li>Click "Generate Token"</li>
+              <li>Copy the token immediately (it won't be shown again)</li>
+            </ol>
+          </div>
+
+          <div>
+            <label htmlFor="tokenInput" className="block text-sm font-medium text-gray-200 mb-2">
+              Enter Your Canvas Personal Access Token:
+            </label>
+            <input
+              id="tokenInput"
+              type="password"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !tokenLoginLoading) {
+                  void handleTokenSubmit();
+                }
+              }}
+              placeholder="Paste your Canvas token here..."
+              className="w-full px-4 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+              disabled={tokenLoginLoading}
+            />
+          </div>
+
+          <div className="flex gap-3 justify-end mt-6">
+            <button
+              onClick={() => {
+                setShowTokenDialog(false);
+                setTokenInput("");
+                setTokenLoginLoading(false);
+              }}
+              className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={tokenLoginLoading}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => void handleTokenSubmit()}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={tokenLoginLoading}
+            >
+              {tokenLoginLoading ? "Logging in..." : "Login"}
+            </button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

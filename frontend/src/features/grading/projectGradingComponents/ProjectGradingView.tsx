@@ -54,10 +54,10 @@ export function ProjectGradingView({
 
   // initialize project grading view based on cache state set above
   useEffect(() => {
-    if (initMode) {
+    if (initMode && initMode !== "none") {
       initializeGradingCache(submissions, activeRubric, initMode);
     }
-  }, [submissions, activeRubric.criteria]);
+  }, [submissions, activeRubric.criteria, initMode]);
 
   useEffect(() => {
     if (activeStudentId !== null) {

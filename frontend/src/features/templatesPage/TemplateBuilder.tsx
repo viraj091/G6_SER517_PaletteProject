@@ -43,6 +43,7 @@ export const TemplateBuilder = ({
   // tracks which criterion card is displaying the detailed view (limited to one at a time)
   const [activeCriterionIndex, setActiveCriterionIndex] = useState(-1);
   const [showDialog, setShowDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const [localTemplate, setLocalTemplate] = useLocalStorage(
     "localTemplate",
     document,
@@ -297,24 +298,34 @@ export const TemplateBuilder = ({
           </div>
 
           {viewOrEdit === "edit" && (
-            <div className="grid gap-2 mt-3">
+            <>
               <button
-                className="transition-all ease-in-out duration-300 bg-blue-600 text-white font-bold rounded-lg py-2 px-4
+                className="transition-all ease-in-out duration-300 bg-blue-600 text-white font-bold rounded-lg py-2 px-4 mt-2
                          hover:bg-blue-700 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 onClick={handleAddCriteria}
                 type={"button"}
               >
                 Add Criteria
               </button>
-              <button
-                className="transition-all ease-in-out duration-300 bg-green-600 text-white font-bold rounded-lg py-2 px-4
-                         hover:bg-green-700 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500"
-                onClick={(event) => submitDocument(event)}
-                type={"button"}
-              >
-                Save Template
-              </button>
-            </div>
+              <div className="grid gap-2 mt-3">
+                <button
+                  className="transition-all ease-in-out duration-300 bg-gray-600 text-white font-bold rounded-lg py-2 px-4
+                           hover:bg-gray-700 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  onClick={() => setShowImportDialog(true)}
+                  type={"button"}
+                >
+                  Import from Existing Template
+                </button>
+                <button
+                  className="transition-all ease-in-out duration-300 bg-green-600 text-white font-bold rounded-lg py-2 px-4
+                           hover:bg-green-700 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  onClick={(event) => submitDocument(event)}
+                  type={"button"}
+                >
+                  Save Template
+                </button>
+              </div>
+            </>
           )}
         </form>
 
@@ -333,6 +344,51 @@ export const TemplateBuilder = ({
             />
           }
         />
+
+        {/* Import from Existing Template Dialog */}
+        <Dialog
+          isOpen={showImportDialog}
+          onClose={() => setShowImportDialog(false)}
+          title={"Import Criteria from Existing Template"}
+        >
+          <div className="flex flex-col gap-3 max-h-96 overflow-y-auto p-2">
+            <p className="text-gray-300 text-sm mb-2">
+              Select a template to import all its criteria into the current template.
+            </p>
+            {templates.filter(t => t.key !== (document as Template).key).length === 0 ? (
+              <p className="text-gray-400 text-center py-4">No other templates available to import from.</p>
+            ) : (
+              templates
+                .filter(t => t.key !== (document as Template).key)
+                .map((t) => (
+                  <button
+                    key={t.key}
+                    className="text-left border border-gray-600 rounded-lg p-3 hover:bg-gray-600 hover:border-blue-500 transition-all"
+                    onClick={() => {
+                      // Import criteria from selected template
+                      const currentCriteria = (document as Template).criteria || [];
+                      const newCriteria = t.criteria.filter(
+                        (newC) => !currentCriteria.some((existingC) => existingC.key === newC.key)
+                      );
+                      if (newCriteria.length > 0) {
+                        setDocument({
+                          ...document,
+                          criteria: [...currentCriteria, ...newCriteria],
+                        });
+                        setHasUnsavedChanges(true);
+                      }
+                      setShowImportDialog(false);
+                    }}
+                  >
+                    <p className="font-semibold text-white">{t.title}</p>
+                    <p className="text-xs text-gray-400">
+                      {t.criteria.length} {t.criteria.length === 1 ? "criterion" : "criteria"} • {t.points} points
+                    </p>
+                  </button>
+                ))
+            )}
+          </div>
+        </Dialog>
       </div>
     </>
   );

@@ -1,4 +1,4 @@
-import { ReactElement, useState } from "react";
+import { ReactElement, useState, useEffect } from "react";
 import {
   ChoiceDialog,
   Footer,
@@ -19,11 +19,29 @@ export function SettingsMain(): ReactElement {
     body: JSON.stringify(settings),
   });
 
+  const { fetchData: getSettings } = useFetch("/user/settings", {
+    method: "GET",
+  });
+
   const { fetchData: canvasLogin } = useFetch("/user/canvas-login", {
     method: "POST",
   });
 
   const { openDialog, closeDialog } = useChoiceDialog();
+
+  // Refetch settings when component mounts
+  useEffect(() => {
+    const refreshSettings = async () => {
+      const response = await getSettings();
+      if (response.success && response.data) {
+        setSettings((prevSettings) => ({
+          ...prevSettings,
+          ...response.data,
+        }));
+      }
+    };
+    void refreshSettings();
+  }, []);
 
   const TEXT_INPUT_STYLE =
     "w-full p-3 rounded bg-gray-700 text-white focus:outline-none focus:ring-2" +

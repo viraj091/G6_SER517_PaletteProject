@@ -2,6 +2,7 @@
  * Rubric Builder view.
  */
 import { ReactElement, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import TemplateUpload from "./TemplateUpload.tsx";
 import {
   Dialog,
@@ -44,6 +45,7 @@ export function RubricBuilderMain({
   const { settings } = useSettings();
   const { openDialog, closeDialog } = useChoiceDialog();
   const { templateInputActive, setTemplateInputActive } = useTemplate();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!activeCourse || !activeAssignment || hotSwapActive) return;
@@ -120,9 +122,18 @@ export function RubricBuilderMain({
       message: `A rubric with the title "${activeRubric.title}" already exists for the active assignment. How would you like to proceed?`,
       buttons: [
         {
+          label: "Continue to Grading",
+          color: "GREEN",
+          action: () => {
+            closeDialog();
+            navigate("/grading");
+          },
+          autoFocus: true,
+        },
+        {
           label: "Edit Rubric",
           action: () => closeDialog(),
-          autoFocus: true,
+          autoFocus: false,
         },
         {
           autoFocus: false,

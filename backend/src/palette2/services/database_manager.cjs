@@ -155,6 +155,17 @@ class DatabaseManager {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (rubric_id) REFERENCES rubric_templates(id) ON DELETE CASCADE
         );
+
+        -- Draft grades (local offline storage)
+        CREATE TABLE IF NOT EXISTS draft_grades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            course_id TEXT NOT NULL,
+            assignment_id TEXT NOT NULL,
+            grades_json TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(course_id, assignment_id)
+        );
         `;
 
         await this.db.exec(schema);

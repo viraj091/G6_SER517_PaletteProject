@@ -39,6 +39,7 @@ export function useFetch<T>(
         },
         method: options.method || DEFAULT_REQUEST.method, // use specified method, otherwise default to GET
         body: options.body || null, // use specified body or default to an empty body
+        credentials: 'include', // include cookies in cross-origin requests
       } as RequestInit);
 
       if (!response.ok) {

@@ -258,14 +258,18 @@ export default function CriteriaCard({
             title={"Add Rating"}
           />
           <PaletteActionButton
-            color={"YELLOW"}
-            onPointerDown={() => setActiveCriterionIndex(-1)}
-            title={"Collapse Card"}
-          />
-          <PaletteActionButton
-            color={"BLUE"}
-            onClick={() => setTemplateSetterActive(true)}
-            title={"Add Template"}
+            color={"GREEN"}
+            onClick={() => {
+              // Ensure criterion is saved with current state
+              handleCriteriaUpdate(index, {
+                ...criterion,
+                description: criteriaDescription,
+                ratings: ratings,
+              });
+              // Collapse the card
+              setActiveCriterionIndex(-1);
+            }}
+            title={"Save Criterion"}
           />
           <PaletteActionButton
             color={"RED"}
