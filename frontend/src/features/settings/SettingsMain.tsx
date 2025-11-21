@@ -210,36 +210,48 @@ export function SettingsMain(): ReactElement {
             <label className="block font-bold text-gray-400 mb-2">
               Canvas Authentication Status
             </label>
-            {settings.cookies && Object.keys(settings.cookies).length > 0 ? (
-              <div className="bg-green-900 border border-green-600 rounded p-3 mb-3">
-                <p className="text-green-200 flex items-center gap-2">
-                  <span className="text-2xl">✓</span>
-                  <span>Successfully authenticated with Canvas via browser login</span>
-                </p>
-                <p className="text-sm text-green-300 mt-1">
-                  {Object.keys(settings.cookies).length} cookies stored
-                </p>
-              </div>
-            ) : (
-              <div className="bg-yellow-900 border border-yellow-600 rounded p-3 mb-3">
-                <p className="text-yellow-200 flex items-center gap-2">
-                  <span className="text-2xl">⚠</span>
-                  <span>Not authenticated via Canvas login</span>
-                </p>
-                <p className="text-sm text-yellow-300 mt-1">
-                  Use the button below to log in with your Canvas credentials
-                </p>
-              </div>
-            )}
+            {(() => {
+              const cookies = (settings.cookies ?? {}) as Record<
+                string,
+                string
+              >;
+              const cookieCount = Object.keys(cookies).length;
+              return cookieCount > 0 ? (
+                <div className="bg-green-900 border border-green-600 rounded p-3 mb-3">
+                  <p className="text-green-200 flex items-center gap-2">
+                    <span className="text-2xl">✓</span>
+                    <span>
+                      Successfully authenticated with Canvas via browser login
+                    </span>
+                  </p>
+                  <p className="text-sm text-green-300 mt-1">
+                    {cookieCount} cookies stored
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-yellow-900 border border-yellow-600 rounded p-3 mb-3">
+                  <p className="text-yellow-200 flex items-center gap-2">
+                    <span className="text-2xl">⚠</span>
+                    <span>Not authenticated via Canvas login</span>
+                  </p>
+                  <p className="text-sm text-yellow-300 mt-1">
+                    Use the button below to log in with your Canvas credentials
+                  </p>
+                </div>
+              );
+            })()}
 
             <PaletteActionButton
-              title={loginLoading ? "Opening Canvas Login..." : "Login to Canvas"}
+              title={
+                loginLoading ? "Opening Canvas Login..." : "Login to Canvas"
+              }
               onClick={() => void handleCanvasLogin()}
               color={"GREEN"}
               disabled={loginLoading}
             />
             <p className="text-sm text-gray-400 mt-2">
-              Browser-based authentication. Window will close automatically after login.
+              Browser-based authentication. Window will close automatically
+              after login.
             </p>
           </div>
         </div>

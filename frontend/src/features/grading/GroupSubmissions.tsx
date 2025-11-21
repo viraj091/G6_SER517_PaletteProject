@@ -27,7 +27,8 @@ export function GroupSubmissions({
   });
 
   const { activeRubric } = useRubric();
-  const { gradedSubmissionCache, setGradedSubmissionCache } = useGradingContext();
+  const { gradedSubmissionCache, setGradedSubmissionCache } =
+    useGradingContext();
 
   // track submission IDs for easy lookups
   const submissionIds = useMemo(
@@ -119,7 +120,7 @@ export function GroupSubmissions({
     (submission) =>
       submission.workflow_state === "submitted" ||
       submission.workflow_state === "graded" ||
-      submission.submitted_at !== null
+      submission.submitted_at !== null,
   );
 
   return (

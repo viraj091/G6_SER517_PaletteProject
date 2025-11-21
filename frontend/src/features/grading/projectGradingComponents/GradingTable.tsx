@@ -106,8 +106,13 @@ export function GradingTable({
                     type="checkbox"
                     name={`${criterion.key}-checkbox`}
                     id={`${criterion.key}-checkbox`}
-                    checked={groupCriteriaMap.get(criterion.key || criterion.id) ?? false}
-                    onChange={() => toggleGroupCriterion(criterion.key || criterion.id)}
+                    checked={
+                      groupCriteriaMap.get(criterion.key || criterion.id) ??
+                      false
+                    }
+                    onChange={() =>
+                      toggleGroupCriterion(criterion.key || criterion.id)
+                    }
                   />
                 </label>
               </td>
@@ -119,8 +124,6 @@ export function GradingTable({
                     criterionId
                   ];
                 const currentValue = assessment?.points;
-                const stringValue =
-                  currentValue == null ? "" : String(currentValue);
 
                 const handleRatingChange = (
                   e: ChangeEvent<HTMLSelectElement>,

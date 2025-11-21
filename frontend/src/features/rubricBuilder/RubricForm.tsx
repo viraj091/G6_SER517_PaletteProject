@@ -1,7 +1,7 @@
 import { CSVExport, CSVImport } from "@/features";
 import { LoadingDots, PaletteActionButton } from "@/components";
 import CriteriaList from "./CriteriaList.tsx";
-import { Criteria, PaletteAPIResponse, Template } from "palette-types";
+import { Criteria, PaletteAPIResponse } from "palette-types";
 import {
   ChangeEvent,
   Dispatch,
@@ -169,42 +169,6 @@ export function RubricForm({
     }
   };
 
-  const handleUpdateAllTemplateCriteria = async (): Promise<void> => {
-    const criteriaOnATemplate: Criteria[] = [];
-    activeRubric?.criteria.forEach((criterion) => {
-      if (criterion.template !== "") criteriaOnATemplate.push(criterion);
-    });
-
-    const existingTemplates: Template[] = [];
-    for (const criterion of criteriaOnATemplate) {
-      const exitingTemplateIndex = existingTemplates.findIndex(
-        (template) => template.key === criterion.template,
-      );
-      if (exitingTemplateIndex === -1) {
-        const template = createTemplate();
-        template.key = criterion.template ?? "Unknown";
-        template.title = criterion.templateTitle ?? "Unknown";
-        template.criteria.push(criterion);
-        existingTemplates.push(template);
-      }
-    }
-
-    for (const template of existingTemplates) {
-      const response = await fetch("http://localhost:3000/api/templates", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(template),
-      });
-
-      if (!response.ok) {
-        console.error("error updating template", response.json());
-        console.error(template);
-      }
-    }
-  };
-
   const handleRemoveCriterion = (index: number, criterion: Criteria) => {
     if (!activeRubric) return; // do nothing if there is no active rubric
 
@@ -281,7 +245,8 @@ export function RubricForm({
     if (!activeRubric || activeRubric.criteria.length === 0) {
       openDialog({
         title: "Cannot Save as Template",
-        message: "Please add at least one criterion before saving as a template.",
+        message:
+          "Please add at least one criterion before saving as a template.",
         excludeCancel: true,
         buttons: [
           {
@@ -300,10 +265,10 @@ export function RubricForm({
     template.criteria = [...activeRubric.criteria];
     template.points = activeRubric.criteria.reduce(
       (sum, criterion) => sum + (criterion.pointsPossible || 0),
-      0
+      0,
     );
-    template.createdAt = new Date().toISOString();
-    template.lastUsed = new Date().toISOString();
+    template.createdAt = new Date();
+    template.lastUsed = new Date();
     template.usageCount = 0;
     template.tags = [];
 
@@ -317,7 +282,7 @@ export function RubricForm({
         body: JSON.stringify(template),
       });
 
-      const result = await response.json();
+      const result = (await response.json()) as PaletteAPIResponse<unknown>;
 
       if (response.ok && result.success) {
         openDialog({
@@ -343,7 +308,9 @@ export function RubricForm({
       } else {
         openDialog({
           title: "Error Saving Template",
-          message: result.error || "Failed to save template. Please try again.",
+          message:
+            (result.error as string) ||
+            "Failed to save template. Please try again.",
           excludeCancel: true,
           buttons: [
             {
@@ -447,7 +414,6 @@ export function RubricForm({
           title={"Save as Template"}
           onClick={(event) => void handleSaveAsTemplate(event)}
           color={"PURPLE"}
-          tooltip="Save this rubric as a reusable template"
         />
 
         <PaletteActionButton
