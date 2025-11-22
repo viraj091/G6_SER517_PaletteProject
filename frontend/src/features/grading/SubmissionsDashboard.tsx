@@ -213,9 +213,9 @@ export function SubmissionsDashboard({
       buttons: [
         {
           label: "Send them!",
-          action: async () => {
+          action: () => {
             closeDialog();
-            await submitGrades();
+            void submitGrades();
           },
           autoFocus: true,
         },

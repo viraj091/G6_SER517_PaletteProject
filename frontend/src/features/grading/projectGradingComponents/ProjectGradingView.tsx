@@ -173,7 +173,8 @@ export function ProjectGradingView({
 
           <div className={"flex gap-4 justify-between items-center"}>
             <p className="text-sm text-gray-300 italic">
-              💡 Tip: Click the 🖌️ brush icon next to student names to add individual comments
+              💡 Tip: Click the 🖌️ brush icon next to student names to add
+              individual comments
             </p>
             <div className="flex gap-4">
               <PaletteActionButton

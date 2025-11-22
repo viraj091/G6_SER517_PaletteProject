@@ -205,7 +205,7 @@ export function GroupSubmissions({
     (submission) =>
       submission.workflow_state === "submitted" ||
       submission.workflow_state === "graded" ||
-      submission.submitted_at !== null
+      submission.submitted_at !== null,
   );
 
   // Determine the status to show

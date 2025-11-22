@@ -81,9 +81,15 @@ const TemplateManagementControls = () => {
               ? "bg-blue-600 text-white ring-2 ring-blue-400 shadow-lg scale-105"
               : "bg-gray-700 text-gray-300 hover:bg-gray-600"
           }`}
-          title={showBulkActions ? "Exit bulk selection mode" : "Enable bulk selection mode"}
+          title={
+            showBulkActions
+              ? "Exit bulk selection mode"
+              : "Enable bulk selection mode"
+          }
         >
-          <i className={`fas ${showBulkActions ? "fa-check-square" : "fa-tasks"} mr-2`} />
+          <i
+            className={`fas ${showBulkActions ? "fa-check-square" : "fa-tasks"} mr-2`}
+          />
           {showBulkActions ? "Bulk Mode: ON" : "Enable Bulk Mode"}
         </button>
         {showBulkActions && (

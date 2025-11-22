@@ -109,17 +109,20 @@ const TemplateUpload: React.FC<TemplateUploadProps> = ({
           Import Entire Template
         </h3>
         <p className="text-blue-200 text-sm">
-          Select a template below to import <strong>all criteria</strong> from that template into your rubric at once.
-          This is useful for quickly building rubrics from pre-made templates.
+          Select a template below to import <strong>all criteria</strong> from
+          that template into your rubric at once. This is useful for quickly
+          building rubrics from pre-made templates.
         </p>
         <p className="text-blue-200 text-xs mt-2 italic">
-          💡 Tip: For adding individual criteria, use the criterion editor instead.
+          💡 Tip: For adding individual criteria, use the criterion editor
+          instead.
         </p>
       </div>
       <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 w-full max-h-96">
         {templates.length === 0 ? (
           <p className="text-gray-400 text-center p-4">
-            No templates available. Create templates from the Templates page first!
+            No templates available. Create templates from the Templates page
+            first!
           </p>
         ) : (
           templates.map((t, tKey) => {
@@ -131,7 +134,9 @@ const TemplateUpload: React.FC<TemplateUploadProps> = ({
               >
                 <p className="font-semibold">{t.title}</p>
                 <p className="text-xs text-gray-400 mt-1">
-                  {t.criteria.length} {t.criteria.length === 1 ? "criterion" : "criteria"} • {t.points} points
+                  {t.criteria.length}{" "}
+                  {t.criteria.length === 1 ? "criterion" : "criteria"} •{" "}
+                  {t.points} points
                 </p>
               </div>
             );
