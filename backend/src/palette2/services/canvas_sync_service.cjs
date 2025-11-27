@@ -94,14 +94,16 @@ class CanvasSyncService {
 
     async uploadRubric(localRubricId, courseId, assignmentId = null, accessToken = null, cookies = null) {
         try {
-            // Skip online check if using cookies (cookie-based auth bypasses connectivity monitoring)
-            if (!this.isOnline && !cookies) {
+            // Skip online check if using cookies or access token (both auth methods bypass connectivity monitoring)
+            if (!this.isOnline && !cookies && !accessToken) {
                 await this.db.addToSyncQueue('rubric', localRubricId, 'create');
                 return null;
             }
 
             const rubric = await this.db.getRubricTemplate(localRubricId);
             if (!rubric) throw new Error('Rubric not found');
+
+            console.log(`🔍 Rubric loaded from DB - ID: ${rubric.id}, Canvas ID: ${rubric.canvas_id}`);
 
             // Convert to Canvas format - Canvas expects indexed criteria object
             const criteriaObj = {};
@@ -163,20 +165,28 @@ class CanvasSyncService {
                 headers['Authorization'] = `Bearer ${this.accessToken}`;
             }
 
-            console.log(`📤 Sending rubric to Canvas: POST /courses/${courseId}/rubrics`);
+            // Check if rubric already exists on Canvas (has canvas_id)
+            const isUpdate = rubric.canvas_id && rubric.canvas_id > 0;
+            const method = isUpdate ? 'PUT' : 'POST';
+            const endpoint = isUpdate
+                ? `/courses/${courseId}/rubrics/${rubric.canvas_id}`
+                : `/courses/${courseId}/rubrics`;
+
+            console.log(`📤 Sending rubric to Canvas: ${method} ${endpoint}`);
             console.log('📋 Rubric data:', JSON.stringify(canvasRubric, null, 2));
 
             let response;
             if (cookies && Object.keys(cookies).length > 0) {
                 // Use axios directly when using cookies to avoid default Authorization header
-                response = await axios.post(
-                    `${this.baseUrl}/api/v1/courses/${courseId}/rubrics`,
-                    canvasRubric,
-                    { headers }
-                );
+                const url = `${this.baseUrl}/api/v1${endpoint}`;
+                response = isUpdate
+                    ? await axios.put(url, canvasRubric, { headers })
+                    : await axios.post(url, canvasRubric, { headers });
             } else {
                 // Use pre-configured instance for token-based auth
-                response = await this.api.post(`/courses/${courseId}/rubrics`, canvasRubric, { headers });
+                response = isUpdate
+                    ? await this.api.put(endpoint, canvasRubric, { headers })
+                    : await this.api.post(endpoint, canvasRubric, { headers });
             }
 
             const canvasRubricData = response.data;
@@ -184,10 +194,61 @@ class CanvasSyncService {
             // Log full Canvas response to debug ID issue
             console.log('📦 Full Canvas response:', JSON.stringify(canvasRubricData, null, 2));
 
-            // Note: Canvas ID update is handled by the rubric manager
+            // Extract rubric ID - Canvas returns it nested in the rubric object
+            const canvasRubricId = canvasRubricData.rubric?.id || canvasRubricData.id;
+            const canvasRubricResponse = canvasRubricData.rubric || canvasRubricData;
+
+            // Update local database with Canvas IDs
+            if (canvasRubricId) {
+                // Update rubric with Canvas ID
+                await this.db.db.run(`
+                    UPDATE rubric_templates
+                    SET canvas_id = ?
+                    WHERE id = ?
+                `, [canvasRubricId, localRubricId]);
+
+                console.log(`💾 Updated rubric ${localRubricId} with Canvas ID: ${canvasRubricId}`);
+
+                // Update criteria and ratings with Canvas IDs
+                const canvasCriteria = canvasRubricResponse.criteria || canvasRubricResponse.data || [];
+
+                for (let i = 0; i < canvasCriteria.length; i++) {
+                    const canvasCriterion = canvasCriteria[i];
+                    const localCriterion = rubric.criteria[i];
+
+                    if (localCriterion && canvasCriterion.id) {
+                        // Update criterion with Canvas ID
+                        await this.db.db.run(`
+                            UPDATE rubric_criteria
+                            SET canvas_criterion_id = ?
+                            WHERE id = ?
+                        `, [canvasCriterion.id, localCriterion.id]);
+
+                        console.log(`💾 Updated criterion ${localCriterion.id} with Canvas ID: ${canvasCriterion.id}`);
+
+                        // Update ratings with Canvas IDs
+                        const canvasRatings = canvasCriterion.ratings || [];
+                        for (let j = 0; j < canvasRatings.length; j++) {
+                            const canvasRating = canvasRatings[j];
+                            const localRating = localCriterion.ratings[j];
+
+                            if (localRating && canvasRating.id) {
+                                await this.db.db.run(`
+                                    UPDATE rubric_ratings
+                                    SET canvas_rating_id = ?
+                                    WHERE id = ?
+                                `, [canvasRating.id, localRating.id]);
+
+                                console.log(`💾 Updated rating ${localRating.id} with Canvas ID: ${canvasRating.id}`);
+                            }
+                        }
+                    }
+                }
+            }
+
             console.log(`✅ Uploaded rubric: ${rubric.name}${assignmentId ? ` and associated with assignment ${assignmentId}` : ''}`);
-            console.log(`📝 Canvas rubric ID: ${canvasRubricData.id}`);
-            return canvasRubricData.id;
+            console.log(`📝 Canvas rubric ID: ${canvasRubricId}`);
+            return canvasRubricId;
 
         } catch (error) {
             console.error('Failed to upload rubric:', error.message);

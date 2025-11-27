@@ -846,7 +846,20 @@ class PaletteApp {
                 // Include all assignments (past, overdue, undated, ungraded, unsubmitted, upcoming, future)
                 // per_page=100 ensures we get more results, order_by=due_at for chronological order
                 try {
-                    const assignments = await makeCanvasRequest(req, 'GET', `/api/v1/courses/${req.params.id}/assignments?per_page=100&order_by=due_at`);
+                    const canvasAssignments = await makeCanvasRequest(req, 'GET', `/api/v1/courses/${req.params.id}/assignments?per_page=100&order_by=due_at`);
+
+                    // Map Canvas assignments to Palette Assignment format
+                    const assignments = canvasAssignments.map(assignment => ({
+                        id: assignment.id,
+                        name: assignment.name,
+                        description: assignment.description || '',
+                        dueDate: assignment.due_at || '',
+                        pointsPossible: assignment.points_possible || 0,
+                        gradingType: assignment.grading_type || 'points', // Canvas grading type
+                        rubricId: assignment.rubric_settings?.id,
+                        createdAt: assignment.created_at
+                    }));
+
                     res.json({
                         success: true,
                         data: assignments
@@ -1051,18 +1064,27 @@ class PaletteApp {
                         const fs = require('fs');
 
                         // Get access token if available (for OAuth/personal token auth)
+                        console.log('🔍 Checking session tokens:', req.session.tokens ? 'EXISTS' : 'NULL');
+                        console.log('🔍 Session access_token:', req.session.tokens?.access_token ? 'EXISTS (encrypted)' : 'NULL');
                         let token = req.session.tokens?.access_token ? this.authService.decryptToken(req.session.tokens.access_token) : null;
+                        console.log('🔍 Decrypted session token:', token ? `EXISTS (${token.substring(0, 10)}...)` : 'NULL');
 
                         // Fallback to token from canvas-token.json file
                         if (!token) {
+                            console.log('🔍 No session token, checking canvas-token.json file...');
                             const tokenPath = path.join(__dirname, '..', '..', '..', 'data', 'canvas-token.json');
+                            console.log('🔍 Token file path:', tokenPath);
+                            console.log('🔍 Token file exists:', fs.existsSync(tokenPath));
                             if (fs.existsSync(tokenPath)) {
                                 const tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+                                console.log('🔍 Token file data:', tokenData.token ? `EXISTS (${tokenData.token.substring(0, 10)}...)` : 'NULL');
                                 if (tokenData.token) {
                                     token = tokenData.token;
                                     console.log('🔑 Using token from canvas-token.json for rubric CREATE sync');
                                 }
                             }
+                        } else {
+                            console.log('🔑 Using token from session for rubric CREATE sync');
                         }
 
                         // Fallback to personal access token from environment variable
@@ -1671,19 +1693,25 @@ class PaletteApp {
                             }));
                         }
                     } else {
-                        console.log('⚠️  Assignment has no group_category_id, treating all as "No Group"');
-                        groupedSubmissions["No Group"] = submissions.map(submission => ({
-                            id: submission.id,
-                            user_id: submission.user_id,
-                            assignment_id: submission.assignment_id,
-                            score: submission.score,
-                            grade: submission.grade,
-                            submitted_at: submission.submitted_at,
-                            workflow_state: submission.workflow_state,
-                            user: submission.user,
-                            rubricAssessment: submission.rubric_assessment || {},
-                            comments: submission.submission_comments || []
-                        }));
+                        console.log('⚠️  Assignment has no group_category_id, treating as individual assignment');
+                        // For individual assignments, create one "group" per student
+                        groupedSubmissions = {};
+                        submissions.forEach(submission => {
+                            const studentName = submission.user?.name || `User ${submission.user_id}`;
+                            groupedSubmissions[studentName] = [{
+                                id: submission.id,
+                                user_id: submission.user_id,
+                                assignment_id: submission.assignment_id,
+                                score: submission.score,
+                                grade: submission.grade,
+                                submitted_at: submission.submitted_at,
+                                workflow_state: submission.workflow_state,
+                                user: submission.user,
+                                rubricAssessment: submission.rubric_assessment || {},
+                                comments: submission.submission_comments || []
+                            }];
+                        });
+                        console.log(`✅ Created individual cards for ${submissions.length} students`);
                     }
                 } else {
                     console.log('⚠️  Failed to fetch assignment details, grouping all as "No Group"');
@@ -1824,22 +1852,36 @@ class PaletteApp {
                             WHERE assignment_id = ? AND course_id = ?
                         `, [req.params.assignment_id, req.params.course_id]);
 
+                        console.log('🔍 Rubric mapping found:', mapping);
+
                         if (mapping) {
                             const localRubric = await this.db.getRubricTemplate(mapping.rubric_id);
+                            console.log('🔍 Local rubric found:', localRubric ? `${localRubric.name} with ${localRubric.criteria?.length || 0} criteria` : 'NULL');
 
-                            // Transform each assessment entry by matching descriptions
-                            for (const [localKey, assessment] of Object.entries(gradeData.rubric_assessment)) {
-                                // Find criterion by local key (try key field first, fallback to id)
-                                const criterion = localRubric.criteria.find(c => (c.key || c.id) === localKey);
-                                if (criterion) {
-                                    // Match Canvas criterion by description
-                                    const canvasCriterion = canvasRubric.find(cc => cc.description === criterion.description);
-                                    if (canvasCriterion) {
-                                        transformedAssessment[canvasCriterion.id] = assessment;
-                                        console.log(`✅ Matched Canvas criterion "${canvasCriterion.description}" (ID: ${canvasCriterion.id})`);
+                            if (localRubric && localRubric.criteria) {
+                                console.log('🔍 Local rubric criterion IDs:', localRubric.criteria.map(c => c.id));
+                                console.log('🔍 Incoming assessment keys:', Object.keys(gradeData.rubric_assessment));
+
+                                // Transform each assessment entry by matching descriptions
+                                for (const [localKey, assessment] of Object.entries(gradeData.rubric_assessment)) {
+                                    // Find criterion by local key (try id field which is the UUID)
+                                    const criterion = localRubric.criteria.find(c => c.id === localKey);
+                                    console.log(`🔍 Looking for local key "${localKey}": ${criterion ? 'FOUND' : 'NOT FOUND'}`);
+
+                                    if (criterion) {
+                                        // Match Canvas criterion by description
+                                        const canvasCriterion = canvasRubric.find(cc => cc.description === criterion.description);
+                                        console.log(`🔍 Matching description "${criterion.description}": ${canvasCriterion ? `Canvas ID ${canvasCriterion.id}` : 'NOT FOUND'}`);
+
+                                        if (canvasCriterion) {
+                                            transformedAssessment[canvasCriterion.id] = assessment;
+                                            console.log(`✅ Matched Canvas criterion "${canvasCriterion.description}" (ID: ${canvasCriterion.id})`);
+                                        }
                                     }
                                 }
                             }
+                        } else {
+                            console.log('❌ No rubric mapping found in assignment_rubrics table');
                         }
                     }
                     console.log('🔍 Final transformed assessment:', transformedAssessment);
@@ -1854,6 +1896,11 @@ class PaletteApp {
                         }
                     });
                 }
+
+                // Get assignment grading type and points possible for conversion
+                const gradingType = assignment.grading_type || 'points';
+                const pointsPossible = assignment.points_possible || 0;
+                console.log(`📊 Assignment grading type: ${gradingType}, points possible: ${pointsPossible}`);
 
                 // Prepare Canvas submission data
                 const canvasSubmissionData = {};
@@ -1878,10 +1925,18 @@ class PaletteApp {
                     console.log('⚠️  No Canvas rubric found or no matching criteria - submitting grade only');
                 }
 
-                // Add total score if we have one
+                // Add total score if we have one, converting based on grading type
                 if (totalScore > 0) {
+                    let postedGrade = totalScore;
+
+                    // Convert to percentage if assignment uses percentage grading
+                    if (gradingType === 'percent' && pointsPossible > 0) {
+                        postedGrade = (totalScore / pointsPossible) * 100;
+                        console.log(`📊 Converting points (${totalScore}) to percentage: ${postedGrade.toFixed(2)}%`);
+                    }
+
                     canvasSubmissionData.submission = {
-                        posted_grade: totalScore
+                        posted_grade: gradingType === 'percent' ? `${postedGrade.toFixed(2)}%` : totalScore
                     };
                 }
 

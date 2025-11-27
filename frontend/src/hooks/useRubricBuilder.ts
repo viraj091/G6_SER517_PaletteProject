@@ -27,7 +27,7 @@ export const useRubricBuilder = () => {
   const [isNewRubric, setIsNewRubric] = useState(false);
 
   const { fetchData: putRubric } = useFetch(
-    `/courses/${activeCourse?.id}/rubrics/${activeAssignment?.rubricId}/${activeAssignment?.id}`,
+    `/courses/${activeCourse?.id}/rubrics/${activeRubric?.key}/${activeAssignment?.id}`,
     {
       method: "PUT",
       body: JSON.stringify(activeRubric),

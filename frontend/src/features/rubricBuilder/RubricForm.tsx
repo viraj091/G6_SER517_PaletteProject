@@ -119,15 +119,20 @@ export function RubricForm({
     setLoading(true);
 
     try {
-      const response: PaletteAPIResponse<unknown> = isNewRubric
-        ? await postRubric()
-        : await putRubric();
+      // Determine if rubric is new based on whether it has a valid key (UUID)
+      // A rubric with a key exists in the database and should be updated
+      const hasValidKey = activeRubric.key && activeRubric.key.length > 0 && activeRubric.key !== 'new';
+      const shouldUpdate = hasValidKey || !isNewRubric;
+
+      const response: PaletteAPIResponse<unknown> = shouldUpdate
+        ? await putRubric()
+        : await postRubric();
 
       if (response.success) {
         openDialog({
           excludeCancel: true,
           title: "Success!",
-          message: `${activeRubric.title} ${isNewRubric ? "created" : "updated"}!`,
+          message: `${activeRubric.title} ${shouldUpdate ? "updated" : "created"}!`,
           buttons: [
             {
               autoFocus: true,

@@ -52,6 +52,17 @@ export function SubmissionsDashboard({
   >({});
   const [oldRubric, setOldRubric] = useState<Rubric>(activeRubric);
 
+  // Search and pagination state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12; // Show 12 cards per page (3 columns x 4 rows)
+
+  // Create assignment-specific localStorage key
+  const getLocalStorageKey = () => {
+    if (!activeCourse?.id || !activeAssignment?.id) return "gradedSubmissionCache";
+    return `gradedSubmissionCache_${activeCourse.id}_${activeAssignment.id}`;
+  };
+
   // Draft grades API hooks
   const draftGradesUrl = `/courses/${activeCourse?.id}/assignments/${activeAssignment?.id}/draft-grades`;
   const { fetchData: getDraftGrades } = useFetch(draftGradesUrl);
@@ -361,7 +372,7 @@ export function SubmissionsDashboard({
 
         setGradedSubmissionCache(gradesToRestore);
         // Also sync to localStorage for the grading view
-        localStorage.setItem("gradedSubmissionCache", JSON.stringify(gradesToRestore));
+        localStorage.setItem(getLocalStorageKey(), JSON.stringify(gradesToRestore));
 
         openDialog({
           title: "Drafts Restored",
@@ -438,6 +449,52 @@ export function SubmissionsDashboard({
     );
   };
 
+  // Filter submissions based on search query
+  const filteredSubmissions = useMemo(() => {
+    if (!searchQuery.trim()) return submissions;
+
+    const query = searchQuery.toLowerCase();
+    const filtered: GroupedSubmissions = {};
+
+    Object.entries(submissions).forEach(([groupName, groupSubmissions]) => {
+      // Check if group name matches
+      if (groupName.toLowerCase().includes(query)) {
+        filtered[groupName] = groupSubmissions;
+        return;
+      }
+
+      // Check if any student in the group matches
+      const matchingSubmissions = groupSubmissions.filter(sub =>
+        sub.user?.name?.toLowerCase().includes(query)
+      );
+
+      if (matchingSubmissions.length > 0) {
+        filtered[groupName] = matchingSubmissions;
+      }
+    });
+
+    return filtered;
+  }, [submissions, searchQuery]);
+
+  // Paginate filtered submissions
+  const paginatedSubmissions = useMemo(() => {
+    const entries = Object.entries(filteredSubmissions);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedEntries = entries.slice(startIndex, endIndex);
+
+    return Object.fromEntries(paginatedEntries);
+  }, [filteredSubmissions, currentPage, itemsPerPage]);
+
+  const totalPages = Math.ceil(Object.keys(filteredSubmissions).length / itemsPerPage);
+  const totalGroups = Object.keys(filteredSubmissions).length;
+
+  // Reset to page 1 when search query changes
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    setCurrentPage(1);
+  };
+
   return (
     <div className={"grid justify-start"}>
       <div className={"grid gap-2 mb-4 p-4"}>
@@ -462,18 +519,33 @@ export function SubmissionsDashboard({
         </div>
       </div>
 
+      {/* Search Bar */}
+      <div className="px-8 mb-4">
+        <input
+          type="text"
+          placeholder="Search by student or group name..."
+          value={searchQuery}
+          onChange={handleSearchChange}
+          className="w-full max-w-md px-4 py-2 rounded-lg border-2 border-gray-600 bg-gray-800 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+        />
+        {totalGroups > 0 && (
+          <p className="text-sm text-gray-400 mt-2">
+            Showing {Object.keys(paginatedSubmissions).length} of {totalGroups} {totalGroups === 1 ? 'result' : 'results'}
+          </p>
+        )}
+      </div>
+
       <div
         className={cn(
           "grid gap-4 px-8 max-w-screen-lg",
           "grid-cols-1 sm:grid-cols-2 md:grid-cols-3",
         )}
       >
-        {Object.entries(submissions).map(([groupName, groupSubmissions]) => {
-          const progress = useMemo(() => {
-            if (!groupSubmissions || groupSubmissions.length === 0) return 0;
-            const gradedCount = groupSubmissions.filter(isGraded).length;
-            return Math.floor((gradedCount / groupSubmissions.length) * 100);
-          }, [groupSubmissions, gradedSubmissionCache]);
+        {Object.entries(paginatedSubmissions).map(([groupName, groupSubmissions]) => {
+          if (!groupSubmissions || groupSubmissions.length === 0) return null;
+          const gradedCount = groupSubmissions.filter(isGraded).length;
+          const progress = Math.floor((gradedCount / groupSubmissions.length) * 100);
+
           return (
             <GroupSubmissions
               key={groupName}
@@ -485,6 +557,29 @@ export function SubmissionsDashboard({
           );
         })}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-4 px-8 mt-6 mb-4">
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className="px-4 py-2 rounded-lg bg-gray-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-600 transition-colors"
+          >
+            Previous
+          </button>
+          <span className="text-white font-medium">
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+            className="px-4 py-2 rounded-lg bg-gray-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-600 transition-colors"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       <Dialog
         isOpen={builderOpen}

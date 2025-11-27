@@ -3,10 +3,31 @@ import { useNavigate } from "react-router-dom";
 import { MouseEvent, useEffect, useState } from "react";
 import { ChoiceDialog, PaletteActionButton } from "@/components";
 import { useRubric } from "@/context";
+import { GradingType } from "palette-types";
 
 interface AssignmentDataProps {
   modifyRubric: () => void;
 }
+
+// Helper to format grading type for display
+const formatGradingType = (gradingType: GradingType | undefined): string => {
+  switch (gradingType) {
+    case "points":
+      return "Points";
+    case "percent":
+      return "Percentage";
+    case "letter_grade":
+      return "Letter Grade";
+    case "gpa_scale":
+      return "GPA Scale";
+    case "pass_fail":
+      return "Pass/Fail";
+    case "not_graded":
+      return "Not Graded";
+    default:
+      return "Points";
+  }
+};
 
 export function AssignmentData({ modifyRubric }: AssignmentDataProps) {
   const { activeAssignment } = useAssignment();
@@ -43,12 +64,17 @@ export function AssignmentData({ modifyRubric }: AssignmentDataProps) {
           <span className={"font-medium"}>Assignment: </span>
           {activeAssignment!.name}
         </p>
-        <div className={"flex gap-4"}>
+        <div className={"flex gap-4 items-center"}>
           <div
             className={"bg-gray-500 rounded-lg px-2 py-1 shadow-2xl flex gap-2"}
           >
             {" "}
             {rubricMessage}{" "}
+          </div>
+          <div
+            className={"bg-blue-600 rounded-lg px-2 py-1 shadow-2xl text-sm font-medium"}
+          >
+            Grading: {formatGradingType(activeAssignment?.gradingType)}
           </div>
           {!activeRubric && (
             <PaletteActionButton

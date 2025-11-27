@@ -34,6 +34,12 @@ export function GroupSubmissions({
   const { gradedSubmissionCache, setGradedSubmissionCache } = useGradingContext();
   const [hasSavedDrafts, setHasSavedDrafts] = useState(false);
 
+  // Create assignment-specific localStorage key
+  const getLocalStorageKey = () => {
+    if (!activeCourse?.id || !activeAssignment?.id) return "gradedSubmissionCache";
+    return `gradedSubmissionCache_${activeCourse.id}_${activeAssignment.id}`;
+  };
+
   // track submission IDs for easy lookups
   const submissionIds = useMemo(
     () => submissions.map((s) => s.id),
@@ -92,14 +98,24 @@ export function GroupSubmissions({
   }, [setGradedSubmissionCache, closeDialog, fetchSubmissions, openGradingViewWithMode]);
 
   const toggleGradingView = () => {
-    if (!activeRubric) {
-      alert(
-        "Assignment does not have a rubric for grading. Create a rubric and try again!",
-      );
+    if (!activeRubric || !activeRubric.id || !activeRubric.criteria || activeRubric.criteria.length === 0) {
+      openDialog({
+        title: "No Rubric Found",
+        message: "This assignment does not have a rubric for grading. Please create a rubric first and try again.",
+        excludeCancel: true,
+        buttons: [
+          {
+            label: "OK",
+            color: "BLUE",
+            action: () => closeDialog(),
+            autoFocus: true,
+          },
+        ],
+      });
       return;
     }
 
-    const stored = localStorage.getItem("gradedSubmissionCache");
+    const stored = localStorage.getItem(getLocalStorageKey());
     const parsedCache = stored ? (JSON.parse(stored) as SavedGrades) : {};
     const hasUnsavedGrades = submissionIds.some(
       (id) => parsedCache[id] !== undefined,
@@ -129,7 +145,7 @@ export function GroupSubmissions({
                   const result = await response.json() as PaletteAPIResponse<SavedGrades>;
                   if (result.success && result.data) {
                     // Set localStorage FIRST so initializeGradingCache can read it
-                    localStorage.setItem("gradedSubmissionCache", JSON.stringify(result.data));
+                    localStorage.setItem(getLocalStorageKey(), JSON.stringify(result.data));
                     // Then update React state
                     setGradedSubmissionCache(result.data);
                     console.log("✅ Restored draft grades from database:", Object.keys(result.data).length, "submissions");
@@ -252,7 +268,6 @@ export function GroupSubmissions({
             color="BLUE"
             title="Grade"
             onClick={toggleGradingView}
-            disabled={!activeRubric?.id}
           />
         </div>
         <div>

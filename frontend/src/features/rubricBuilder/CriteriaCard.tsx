@@ -84,9 +84,14 @@ export default function CriteriaCard({
 
   // Update criterion when ratings change.
   const handleRatingChange = (ratingIndex: number, updatedRating: Rating) => {
-    const updatedRatings = ratings.map((rating, index) =>
-      index === ratingIndex ? updatedRating : rating,
-    );
+    // Find the rating by its key/id instead of relying on index
+    const ratingToUpdate = ratings[ratingIndex];
+    const ratingKey = ratingToUpdate?.key || ratingToUpdate?.id;
+
+    const updatedRatings = ratings.map((rating) => {
+      const currentKey = rating.key || rating.id;
+      return currentKey === ratingKey ? updatedRating : rating;
+    });
 
     // Calculate total points (sum of all rating points)
     const totalPoints = updatedRatings.reduce(
@@ -115,7 +120,15 @@ export default function CriteriaCard({
 
   // Update criterion when a rating is removed
   const handleRemoveRating = (ratingIndex: number) => {
-    const updatedRatings = ratings.filter((_, i) => i !== ratingIndex);
+    // Find the rating by its key/id instead of relying on index
+    const ratingToRemove = ratings[ratingIndex];
+    const ratingKey = ratingToRemove?.key || ratingToRemove?.id;
+
+    const updatedRatings = ratings.filter((rating) => {
+      const currentKey = rating.key || rating.id;
+      return currentKey !== ratingKey;
+    });
+
     setRatings(updatedRatings);
     criterion.ratings = updatedRatings;
     handleCriteriaUpdate(index, criterion);
@@ -125,7 +138,7 @@ export default function CriteriaCard({
     return ratings.map((rating: Rating, ratingIndex: number) => {
       return (
         <RatingCard
-          key={rating.id}
+          key={rating.key || rating.id}
           ratingIndex={ratingIndex}
           rating={rating}
           handleRatingChange={handleRatingChange}
@@ -142,10 +155,24 @@ export default function CriteriaCard({
     event.preventDefault();
 
     const updatedRatings = ratings.slice(0);
-    updatedRatings.push(createRating(ratings.length));
+
+    // Calculate median points between max and min existing ratings
+    let medianPoints = 0;
+    if (ratings.length > 0) {
+      const allPoints = ratings.map(r => r.points);
+      const maxPoints = Math.max(...allPoints);
+      const minPoints = Math.min(...allPoints);
+      medianPoints = Math.round((maxPoints + minPoints) / 2);
+    }
+
+    // Create new rating with median points and descriptive label
+    const newRating = createRating(medianPoints, "Developing");
+    updatedRatings.push(newRating);
     setRatings(updatedRatings);
-    criterion.ratings = ratings;
-    handleCriteriaUpdate(index, criterion);
+
+    // Update criterion with new ratings array
+    const updatedCriterion = { ...criterion, ratings: updatedRatings };
+    handleCriteriaUpdate(index, updatedCriterion);
   };
 
   const handleExpandCriterion = () => {

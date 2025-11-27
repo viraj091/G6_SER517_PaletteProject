@@ -4,6 +4,11 @@
 
 import { Rating } from "./Rating";
 
+/**
+ * Criterion use range mode:
+ * - false (default): Use discrete rating options (dropdown selection)
+ * - true: Use free-form range input (any value from 0 to pointsPossible)
+ */
 export interface Criteria {
   id: string;
   description: string;
@@ -17,4 +22,5 @@ export interface Criteria {
   key: string;
   updatePoints: () => void;
   isGroupCriterion: boolean;
+  useRange?: boolean; // true = free-form range input, false/undefined = discrete ratings
 }

@@ -6,12 +6,14 @@ import {
   useContext,
   useEffect,
   useState,
+  useMemo,
 } from "react";
 import type {
   PaletteGradedSubmission,
   Rubric,
   Submission,
 } from "palette-types";
+import { useCourse, useAssignment } from "@/context";
 
 type GradingContextType = {
   gradedSubmissionCache: SavedGrades;
@@ -43,20 +45,41 @@ export const useGradingContext = () => {
 };
 
 export const GradingProvider = ({ children }: { children: ReactNode }) => {
+  const { activeCourse } = useCourse();
+  const { activeAssignment } = useAssignment();
+
+  // Create assignment-specific localStorage key using useMemo
+  const localStorageKey = useMemo(() => {
+    if (!activeCourse?.id || !activeAssignment?.id) return "gradedSubmissionCache";
+    return `gradedSubmissionCache_${activeCourse.id}_${activeAssignment.id}`;
+  }, [activeCourse?.id, activeAssignment?.id]);
+
   // track all in progress grades
   const [gradedSubmissionCache, setGradedSubmissionCache] =
-    useState<SavedGrades>(() => {
-      const stored = localStorage.getItem("gradedSubmissionCache");
-      return stored ? (JSON.parse(stored) as SavedGrades) : {};
-    });
+    useState<SavedGrades>({});
+
+  // Load from localStorage when key changes
+  useEffect(() => {
+    const stored = localStorage.getItem(localStorageKey);
+    if (stored) {
+      try {
+        setGradedSubmissionCache(JSON.parse(stored) as SavedGrades);
+      } catch (error) {
+        console.error("Error parsing localStorage:", error);
+        setGradedSubmissionCache({});
+      }
+    } else {
+      setGradedSubmissionCache({});
+    }
+  }, [localStorageKey]);
 
   // persist in-progress grades to local storage whenever they change
   useEffect(() => {
     localStorage.setItem(
-      "gradedSubmissionCache",
+      localStorageKey,
       JSON.stringify(gradedSubmissionCache),
     );
-  }, [gradedSubmissionCache]);
+  }, [gradedSubmissionCache, localStorageKey]);
 
   // update a criterion rating for a target submission
   const updateScore = (
@@ -137,7 +160,7 @@ export const GradingProvider = ({ children }: { children: ReactNode }) => {
     console.log(`🎯 Number of submissions: ${submissions.length}`);
     console.log(`🎯 Number of rubric criteria: ${rubric.criteria.length}`);
 
-    const localCacheRaw = localStorage.getItem("gradedSubmissionCache");
+    const localCacheRaw = localStorage.getItem(localStorageKey);
     const localCache = localCacheRaw
       ? (JSON.parse(localCacheRaw) as SavedGrades)
       : {};

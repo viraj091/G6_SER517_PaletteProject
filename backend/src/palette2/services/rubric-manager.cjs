@@ -140,7 +140,7 @@ class RubricManager {
         // Update basic rubric info
         if (changes.name || changes.description || changes.points_possible) {
             await this.db.run(`
-                UPDATE rubric_templates 
+                UPDATE rubric_templates
                 SET name = COALESCE(?, name),
                     description = COALESCE(?, description),
                     points_possible = COALESCE(?, points_possible),
@@ -156,11 +156,63 @@ class RubricManager {
 
         // Handle criteria changes
         if (changes.criteria) {
-            await this.updateCriteria(rubricId, changes.criteria);
+            // Check if criteria is an array of action objects or full criteria array
+            if (changes.criteria.length > 0 && changes.criteria[0].action) {
+                // Already action-based, pass directly
+                await this.updateCriteria(rubricId, changes.criteria);
+            } else {
+                // Full criteria array - convert to action-based updates
+                await this.updateCriteriaFromFullArray(rubricId, changes.criteria);
+            }
         }
 
         console.log(`Updated rubric ${rubricId} in place`);
         return rubricId;
+    }
+
+    async updateCriteriaFromFullArray(rubricId, newCriteria) {
+        // Get existing criteria from database
+        const existingRubric = await this.db.getRubricTemplate(rubricId);
+        const existingCriteria = existingRubric?.criteria || [];
+
+        // Create a map of existing criteria by their key (use key field if available)
+        const existingMap = new Map();
+        existingCriteria.forEach(criterion => {
+            const key = criterion.key || criterion.id;
+            existingMap.set(key, criterion);
+        });
+
+        // Process each criterion from the new array
+        for (let i = 0; i < newCriteria.length; i++) {
+            const newCriterion = newCriteria[i];
+            const criterionKey = newCriterion.key || newCriterion.id;
+            const existingCriterion = existingMap.get(criterionKey);
+
+            if (existingCriterion) {
+                // Update existing criterion
+                await this.updateCriterion(existingCriterion.id, {
+                    description: newCriterion.description,
+                    long_description: newCriterion.longDescription || newCriterion.long_description,
+                    points: newCriterion.pointsPossible || newCriterion.points_possible || newCriterion.points,
+                    ratings: newCriterion.ratings
+                });
+                // Remove from map so we know it was processed
+                existingMap.delete(criterionKey);
+            } else {
+                // New criterion - add it
+                await this.addCriterion(rubricId, {
+                    description: newCriterion.description,
+                    long_description: newCriterion.longDescription || newCriterion.long_description,
+                    points: newCriterion.pointsPossible || newCriterion.points_possible || newCriterion.points,
+                    ratings: newCriterion.ratings
+                });
+            }
+        }
+
+        // Any criteria left in existingMap were deleted
+        for (const [key, criterion] of existingMap) {
+            await this.deleteCriterion(criterion.id);
+        }
     }
 
     async updateCriteria(rubricId, criteriaChanges) {
@@ -183,18 +235,16 @@ class RubricManager {
     }
 
     async addCriterion(rubricId, criterionData) {
-        return await this.db.runTransaction(async (db) => {
-            // Get next position
-            const maxPos = await db.get(`
-                SELECT MAX(position) as max_pos 
-                FROM rubric_criteria 
-                WHERE rubric_template_id = ?
-            `, [rubricId]);
+        // Get next position
+        const maxPos = await this.db.get(`
+            SELECT MAX(position) as max_pos
+            FROM rubric_criteria
+            WHERE rubric_template_id = ?
+        `, [rubricId]);
 
-            const position = (maxPos?.max_pos || -1) + 1;
-            
-            return await this.createCriterion(rubricId, criterionData, position, db);
-        });
+        const position = (maxPos?.max_pos || -1) + 1;
+
+        return await this.createCriterion(rubricId, criterionData, position, this.db);
     }
 
     async createCriterion(rubricId, criterionData, position, db = null) {
@@ -229,57 +279,104 @@ class RubricManager {
     }
 
     async updateCriterion(criterionId, updates) {
-        return await this.db.runTransaction(async (db) => {
-            // Update criterion
-            await db.run(`
-                UPDATE rubric_criteria 
-                SET description = COALESCE(?, description),
-                    long_description = COALESCE(?, long_description),
-                    points = COALESCE(?, points)
-                WHERE id = ?
-            `, [updates.description, updates.long_description, updates.points, criterionId]);
+        // Update criterion
+        await this.db.run(`
+            UPDATE rubric_criteria
+            SET description = COALESCE(?, description),
+                long_description = COALESCE(?, long_description),
+                points = COALESCE(?, points)
+            WHERE id = ?
+        `, [updates.description, updates.long_description, updates.points, criterionId]);
 
-            // Update ratings if provided
-            if (updates.ratings) {
-                // Delete existing ratings
-                await db.run('DELETE FROM rubric_ratings WHERE criterion_id = ?', [criterionId]);
-                
-                // Add new ratings
-                for (let i = 0; i < updates.ratings.length; i++) {
-                    const rating = updates.ratings[i];
-                    await db.run(`
-                        INSERT INTO rubric_ratings 
+        // Update ratings if provided
+        if (updates.ratings) {
+            // Get existing ratings to preserve their IDs where possible
+            const existingRatings = await this.db.all(`
+                SELECT id, description, points, canvas_rating_id
+                FROM rubric_ratings
+                WHERE criterion_id = ?
+                ORDER BY position
+            `, [criterionId]);
+
+            // Create a map of existing ratings by their key (id field)
+            const existingRatingsMap = new Map();
+            existingRatings.forEach(rating => {
+                const key = rating.id;
+                existingRatingsMap.set(key, rating);
+            });
+
+            // Track which ratings we've updated
+            const updatedRatingIds = new Set();
+
+            // Add or update ratings
+            for (let i = 0; i < updates.ratings.length; i++) {
+                const rating = updates.ratings[i];
+                const ratingKey = rating.id || rating.key;
+                const existingRating = existingRatingsMap.get(ratingKey);
+
+                if (existingRating) {
+                    // Update existing rating
+                    await this.db.run(`
+                        UPDATE rubric_ratings
+                        SET description = ?,
+                            long_description = ?,
+                            points = ?,
+                            position = ?
+                        WHERE id = ?
+                    `, [
+                        rating.description || existingRating.description,
+                        rating.longDescription || rating.long_description || '',
+                        rating.points,
+                        i,
+                        existingRating.id
+                    ]);
+                    updatedRatingIds.add(existingRating.id);
+                } else {
+                    // Insert new rating
+                    const newRatingId = ratingKey || uuidv4();
+                    await this.db.run(`
+                        INSERT INTO rubric_ratings
                         (id, criterion_id, description, long_description, points, position)
                         VALUES (?, ?, ?, ?, ?, ?)
                     `, [
-                        uuidv4(), criterionId, rating.description,
-                        rating.long_description || '', rating.points, i
+                        newRatingId,
+                        criterionId,
+                        rating.description || '',
+                        rating.longDescription || rating.long_description || '',
+                        rating.points,
+                        i
                     ]);
+                    updatedRatingIds.add(newRatingId);
                 }
             }
-        });
+
+            // Delete ratings that weren't in the update
+            for (const existingRating of existingRatings) {
+                if (!updatedRatingIds.has(existingRating.id)) {
+                    await this.db.run('DELETE FROM rubric_ratings WHERE id = ?', [existingRating.id]);
+                }
+            }
+        }
     }
 
     async deleteCriterion(criterionId) {
-        return await this.db.runTransaction(async (db) => {
-            // Check if criterion is used in any assessments
-            const inUse = await db.get(`
-                SELECT COUNT(*) as count FROM criterion_assessments 
-                WHERE criterion_id = ?
-            `, [criterionId]);
+        // Check if criterion is used in any assessments
+        const inUse = await this.db.get(`
+            SELECT COUNT(*) as count FROM criterion_assessments
+            WHERE criterion_id = ?
+        `, [criterionId]);
 
-            if (inUse.count > 0) {
-                throw new Error('Cannot delete criterion that has been used in assessments');
-            }
+        if (inUse.count > 0) {
+            throw new Error('Cannot delete criterion that has been used in assessments');
+        }
 
-            // Delete ratings first (cascade should handle this)
-            await db.run('DELETE FROM rubric_ratings WHERE criterion_id = ?', [criterionId]);
-            
-            // Delete criterion
-            await db.run('DELETE FROM rubric_criteria WHERE id = ?', [criterionId]);
+        // Delete ratings first (cascade should handle this)
+        await this.db.run('DELETE FROM rubric_ratings WHERE criterion_id = ?', [criterionId]);
 
-            console.log(`Deleted criterion ${criterionId}`);
-        });
+        // Delete criterion
+        await this.db.run('DELETE FROM rubric_criteria WHERE id = ?', [criterionId]);
+
+        console.log(`Deleted criterion ${criterionId}`);
     }
 
     async reorderCriteria(rubricId, newOrder) {
