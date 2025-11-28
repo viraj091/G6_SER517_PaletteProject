@@ -20,6 +20,7 @@
     "build:all": "npm run build -w palette-types && npm run build -w backend && npm run build -w frontend",
     "build:electron": "npm run build:all && electron-builder --win",
     "build:electron:dir": "npm run build:all && electron-builder --dir",
+    "start": "npm run build:all && node backend/src/palette2/server.cjs",
     "clean": "npm run clean --workspaces",
     "lint": "eslint . ",
     "prettier:fix": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
