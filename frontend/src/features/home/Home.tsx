@@ -238,9 +238,14 @@ export function Home(): ReactElement {
           >
             Login Using Token
           </button>
-          <p className="text-sm text-gray-400 text-center mt-2">
-            Choose your preferred authentication method
-          </p>
+          <div className="text-sm text-center mt-2 space-y-1">
+            <p className="text-gray-400">
+              Choose your preferred authentication method
+            </p>
+            <p className="text-blue-400 font-medium">
+              Recommended for new users: Login Using Token
+            </p>
+          </div>
         </div>
       </div>
       <Footer />

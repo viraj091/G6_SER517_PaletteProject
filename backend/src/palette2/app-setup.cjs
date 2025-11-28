@@ -23,6 +23,17 @@ class PaletteApp {
     }
 
     loadConfig() {
+        // In Electron mode, use absolute paths for data directory
+        const isElectron = process.env.ELECTRON_MODE === 'true';
+        let dbPath;
+        if (isElectron && process.resourcesPath) {
+            // In packaged Electron app: resources/app.asar.unpacked/data/palette.db
+            dbPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'data', 'palette.db');
+        } else {
+            // In development mode
+            dbPath = process.env.DB_PATH || './data/palette.db';
+        }
+
         return {
             canvas: {
                 baseUrl: process.env.CANVAS_BASE_URL || 'https://canvas.instructure.com',
@@ -31,7 +42,7 @@ class PaletteApp {
                 redirectUri: process.env.CANVAS_REDIRECT_URI || 'http://localhost:5173/auth/canvas/callback'
             },
             database: {
-                path: process.env.DB_PATH || './data/palette.db'
+                path: dbPath
             },
             server: {
                 port: process.env.PORT || 5173,
@@ -41,6 +52,20 @@ class PaletteApp {
                 autoSyncInterval: parseInt(process.env.AUTO_SYNC_INTERVAL) || 5
             }
         };
+    }
+
+    // Normalize Canvas IDs - Canvas sometimes returns full format (72360000006062820)
+    // but we store and use the shorter format (6062820)
+    normalizeCanvasId(id) {
+        if (!id) return id;
+        const idStr = String(id);
+        // Canvas full IDs start with 7236 followed by zeros, then the actual ID
+        // Examples: 72360000000015760 -> 15760, 72360000006062820 -> 6062820
+        if (idStr.length > 10 && idStr.startsWith('7236')) {
+            // Remove leading 7236 and all zeros to get the actual ID
+            return idStr.replace(/^7236[0]+/, '');
+        }
+        return idStr;
     }
 
     async initialize() {
@@ -105,13 +130,7 @@ class PaletteApp {
         this.app.use(this.authService.app);
 
         // Serve static files (if frontend is built)
-        // In Electron mode, look for frontend in the app root
-        // In development/production, look relative to backend dist
-        const isElectron = process.env.ELECTRON_MODE === 'true';
-        const distPath = isElectron
-            ? path.join(process.resourcesPath || __dirname, '../../dist/frontend')
-            : path.join(__dirname, '../../dist/frontend');
-
+        const distPath = path.join(__dirname, '../../dist/frontend');
         if (require('fs').existsSync(distPath)) {
             this.app.use(express.static(distPath));
             console.log(`✅ Serving frontend from: ${distPath}`);
@@ -139,11 +158,7 @@ class PaletteApp {
 
         // Frontend fallback
         this.app.get('*', (req, res) => {
-            const isElectron = process.env.ELECTRON_MODE === 'true';
-            const indexPath = isElectron
-                ? path.join(process.resourcesPath || __dirname, '../../dist/frontend/index.html')
-                : path.join(__dirname, '../../dist/frontend/index.html');
-
+            const indexPath = path.join(__dirname, '../../dist/frontend/index.html');
             if (require('fs').existsSync(indexPath)) {
                 res.sendFile(indexPath);
             } else {
@@ -857,6 +872,9 @@ class PaletteApp {
                         pointsPossible: assignment.points_possible || 0,
                         gradingType: assignment.grading_type || 'points', // Canvas grading type
                         rubricId: assignment.rubric_settings?.id,
+                        quizId: assignment.quiz_id, // Classic Quizzes have quiz_id
+                        isNewQuiz: assignment.submission_types?.includes('external_tool') &&
+                                   assignment.external_tool_tag_attributes !== undefined, // New Quizzes (Quizzes.Next)
                         createdAt: assignment.created_at
                     }));
 
@@ -1273,7 +1291,11 @@ class PaletteApp {
         // GET rubric by assignment ID (for RubricContext compatibility)
         router.get('/api/courses/:course_id/assignments/:assignment_id/rubric', async (req, res) => {
             try {
-                console.log(`🔍 Fetching rubric for assignment ${req.params.assignment_id}`);
+                // Normalize Canvas IDs
+                const courseId = this.normalizeCanvasId(req.params.course_id);
+                const assignmentId = this.normalizeCanvasId(req.params.assignment_id);
+
+                console.log(`🔍 Fetching rubric for assignment ${assignmentId} (original: ${req.params.assignment_id})`);
 
                 // Auto-authenticate if needed
                 if (!req.session.user && process.env.CANVAS_PERSONAL_TOKEN) {
@@ -1300,7 +1322,7 @@ class PaletteApp {
                 const mapping = await this.db.get(`
                     SELECT rubric_id FROM assignment_rubrics
                     WHERE assignment_id = ? AND course_id = ?
-                `, [req.params.assignment_id, req.params.course_id]);
+                `, [assignmentId, courseId]);
 
                 let rubric = null;
 
@@ -1321,13 +1343,13 @@ class PaletteApp {
                         const assignment = await makeCanvasRequest(
                             req,
                             'GET',
-                            `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}?include[]=rubric`
+                            `/api/v1/courses/${courseId}/assignments/${assignmentId}?include[]=rubric`
                         );
 
                         if (assignment) {
 
                             if (assignment.rubric && assignment.rubric.length > 0) {
-                                console.log(`✅ Found Canvas rubric for assignment ${req.params.assignment_id}`);
+                                console.log(`✅ Found Canvas rubric for assignment ${assignmentId}`);
 
                                 // Check if we already imported this Canvas rubric
                                 const canvasRubricId = assignment.rubric_settings?.id;
@@ -1477,7 +1499,11 @@ class PaletteApp {
         // GET submissions for assignment (with group information)
         router.get('/api/courses/:course_id/assignments/:assignment_id/submissions', async (req, res) => {
             try {
-                console.log(`📥 Fetching submissions for assignment ${req.params.assignment_id}`);
+                // Normalize Canvas IDs
+                const courseId = this.normalizeCanvasId(req.params.course_id);
+                const assignmentId = this.normalizeCanvasId(req.params.assignment_id);
+
+                console.log(`📥 Fetching submissions for assignment ${assignmentId} (original: ${req.params.assignment_id})`);
 
                 // Auto-authenticate if needed
                 if (!req.session.user && process.env.CANVAS_PERSONAL_TOKEN) {
@@ -1511,7 +1537,7 @@ class PaletteApp {
                 const submissions = await makeCanvasRequest(
                     req,
                     'GET',
-                    `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}/submissions?include[]=user&include[]=rubric_assessment&include[]=submission_comments&per_page=100`
+                    `/api/v1/courses/${courseId}/assignments/${assignmentId}/submissions?include[]=user&include[]=rubric_assessment&include[]=submission_comments&per_page=100`
                 );
 
                 // Debug: Log rubric assessment data
@@ -1527,7 +1553,7 @@ class PaletteApp {
                 const mapping = await this.db.get(`
                     SELECT rubric_id FROM assignment_rubrics
                     WHERE assignment_id = ? AND course_id = ?
-                `, [req.params.assignment_id, req.params.course_id]);
+                `, [assignmentId, courseId]);
 
                 let canvasToLocalIdMap = {};
 
@@ -1538,7 +1564,7 @@ class PaletteApp {
                     const canvasAssignment = await makeCanvasRequest(
                         req,
                         'GET',
-                        `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}?include[]=rubric`
+                        `/api/v1/courses/${courseId}/assignments/${assignmentId}?include[]=rubric`
                     );
 
                     const canvasRubric = canvasAssignment.rubric;
@@ -1583,7 +1609,7 @@ class PaletteApp {
                 const assignment = await makeCanvasRequest(
                     req,
                     'GET',
-                    `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}`
+                    `/api/v1/courses/${courseId}/assignments/${assignmentId}`
                 );
 
                 let groupedSubmissions = { "No Group": [] };
@@ -1599,7 +1625,7 @@ class PaletteApp {
                             const overrides = await makeCanvasRequest(
                                 req,
                                 'GET',
-                                `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}/overrides`
+                                `/api/v1/courses/${courseId}/assignments/${assignmentId}/overrides`
                             );
                             // Filter for group overrides (not student or section overrides)
                             const groupOverrides = overrides.filter(override => override.group_id);
@@ -1988,6 +2014,288 @@ class PaletteApp {
         });
 
         // ========================
+        // QUIZ ENDPOINTS
+        // ========================
+
+        // GET quiz questions for a quiz
+        router.get('/api/courses/:course_id/quizzes/:quiz_id/questions', async (req, res) => {
+            try {
+                console.log(`📥 Fetching questions for quiz ${req.params.quiz_id}`);
+
+                // Auto-authenticate if needed
+                if (!req.session.user && process.env.CANVAS_PERSONAL_TOKEN) {
+                    try {
+                        const userInfo = await this.authService.getUserInfo(process.env.CANVAS_PERSONAL_TOKEN);
+                        req.session.user = {
+                            id: userInfo.id,
+                            name: userInfo.name,
+                            email: userInfo.email,
+                            canvas_id: userInfo.id
+                        };
+                        req.session.tokens = {
+                            access_token: this.authService.encryptToken(process.env.CANVAS_PERSONAL_TOKEN),
+                            token_type: 'personal',
+                            expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                        };
+                        console.log('🔐 Auto-authenticated for quiz questions fetch');
+                    } catch (error) {
+                        console.log('⚠️  Auto-authentication failed:', error.message);
+                    }
+                }
+
+                if (!req.session.user) {
+                    return res.status(401).json({
+                        success: false,
+                        error: 'Authentication required'
+                    });
+                }
+
+                // Fetch quiz questions from Canvas
+                const questions = await makeCanvasRequest(
+                    req,
+                    'GET',
+                    `/api/v1/courses/${req.params.course_id}/quizzes/${req.params.quiz_id}/questions?per_page=100`
+                );
+
+                console.log(`✅ Fetched ${questions.length} questions for quiz ${req.params.quiz_id}`);
+
+                res.json({
+                    success: true,
+                    message: 'Quiz questions fetched successfully',
+                    data: questions
+                });
+            } catch (error) {
+                console.error('Error fetching quiz questions:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // GET quiz submission with student answers
+        // Note: :id param is the assignment submission ID, we need to find the corresponding quiz submission
+        router.get('/api/courses/:course_id/quizzes/:quiz_id/submissions/:id', async (req, res) => {
+            try {
+                console.log(`📥 Fetching quiz submission for assignment submission ${req.params.id}, quiz ${req.params.quiz_id}`);
+
+                // Auto-authenticate if needed
+                if (!req.session.user && process.env.CANVAS_PERSONAL_TOKEN) {
+                    try {
+                        const userInfo = await this.authService.getUserInfo(process.env.CANVAS_PERSONAL_TOKEN);
+                        req.session.user = {
+                            id: userInfo.id,
+                            name: userInfo.name,
+                            email: userInfo.email,
+                            canvas_id: userInfo.id
+                        };
+                        req.session.tokens = {
+                            access_token: this.authService.encryptToken(process.env.CANVAS_PERSONAL_TOKEN),
+                            token_type: 'personal',
+                            expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                        };
+                        console.log('🔐 Auto-authenticated for quiz submission fetch');
+                    } catch (error) {
+                        console.log('⚠️  Auto-authentication failed:', error.message);
+                    }
+                }
+
+                if (!req.session.user) {
+                    return res.status(401).json({
+                        success: false,
+                        error: 'Authentication required'
+                    });
+                }
+
+                // Get quiz submission info first to get the user_id
+                const allSubmissionsResponse = await makeCanvasRequest(
+                    req,
+                    'GET',
+                    `/api/v1/courses/${req.params.course_id}/quizzes/${req.params.quiz_id}/submissions?per_page=100`
+                );
+
+                const quizSubmission = allSubmissionsResponse.quiz_submissions?.find(
+                    qs => qs.submission_id && qs.submission_id.toString() === req.params.id
+                );
+
+                if (!quizSubmission) {
+                    console.log(`⚠️  Could not find quiz submission for assignment submission ${req.params.id}`);
+                    return res.json({
+                        success: true,
+                        message: 'Quiz submission not found or no data available',
+                        data: { submission_data: [] }
+                    });
+                }
+
+                console.log(`✅ Found quiz submission (quiz_submission_id: ${quizSubmission.id}, user_id: ${quizSubmission.user_id})`);
+
+                // Fetch the assignment submission with submission_history using user_id
+                // For quizzes, the submission_data field contains per-question scores
+                const assignmentId = await makeCanvasRequest(
+                    req,
+                    'GET',
+                    `/api/v1/courses/${req.params.course_id}/quizzes/${req.params.quiz_id}`
+                ).then(quiz => quiz.assignment_id);
+
+                console.log(`📝 Quiz assignment ID: ${assignmentId}`);
+
+                const submissionResponse = await makeCanvasRequest(
+                    req,
+                    'GET',
+                    `/api/v1/courses/${req.params.course_id}/assignments/${assignmentId}/submissions/${quizSubmission.user_id}?include[]=submission_history`
+                );
+
+                console.log(`📦 Submission response keys:`, Object.keys(submissionResponse));
+                console.log(`📦 Submission history length:`, submissionResponse.submission_history?.length);
+
+                // Get the submission_data from the most recent submission in history
+                let submission_data = [];
+                if (submissionResponse.submission_history && submissionResponse.submission_history.length > 0) {
+                    // The most recent submission should have the submission_data
+                    const latestSubmission = submissionResponse.submission_history[submissionResponse.submission_history.length - 1];
+                    submission_data = latestSubmission.submission_data || [];
+                    console.log(`📝 Found submission_data with ${submission_data.length} questions`);
+                    if (submission_data.length > 0) {
+                        console.log(`📝 Sample submission_data item:`, JSON.stringify(submission_data[0], null, 2));
+                    }
+                } else {
+                    console.log(`⚠️  No submission_history found`);
+                }
+
+                const mergedData = {
+                    ...quizSubmission,
+                    submission_data
+                };
+
+                res.json({
+                    success: true,
+                    message: 'Quiz submission fetched successfully',
+                    data: mergedData
+                });
+            } catch (error) {
+                console.error('Error fetching quiz submission:', error);
+                // Return empty data instead of error to prevent UI from breaking
+                res.json({
+                    success: true,
+                    message: 'Could not fetch quiz submission details',
+                    data: { submission_data: [] }
+                });
+            }
+        });
+
+        // PUT simple grade to submission (for quizzes, no rubric)
+        router.put('/api/courses/:course_id/assignments/:assignment_id/submissions/:submission_id/simple-grade', async (req, res) => {
+            try {
+                console.log(`📤 Submitting simple grade for submission ${req.params.submission_id}`);
+                console.log(`🔐 Session user:`, req.session.user ? 'exists' : 'missing');
+                console.log(`🔐 Session tokens:`, req.session.tokens ? 'exists' : 'missing');
+
+                // Auto-authenticate if needed
+                if (!req.session.user) {
+                    try {
+                        const fs = require('fs');
+                        const settingsPath = path.join(__dirname, '..', '..', '..', 'data', 'settings.json');
+
+                        // Check if using cookie-based authentication
+                        if (fs.existsSync(settingsPath)) {
+                            const persistentSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                            const canvasCookies = persistentSettings.canvasCookies || {};
+
+                            if (Object.keys(canvasCookies).length > 0) {
+                                const userName = canvasCookies.SSONAME || 'Canvas User';
+
+                                req.session.user = {
+                                    id: 'cookie-user',
+                                    name: userName,
+                                    email: `${userName}@canvas`,
+                                    canvas_id: 'cookie-user'
+                                };
+                                req.session.tokens = {
+                                    token_type: 'cookies',
+                                    expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                                };
+                                console.log('🔐 Auto-authenticated with cookies for simple grade submission');
+                            }
+                        } else if (process.env.CANVAS_PERSONAL_TOKEN) {
+                            const userInfo = await this.authService.getUserInfo(process.env.CANVAS_PERSONAL_TOKEN);
+                            req.session.user = {
+                                id: userInfo.id,
+                                name: userInfo.name,
+                                email: userInfo.email,
+                                canvas_id: userInfo.id
+                            };
+                            req.session.tokens = {
+                                access_token: this.authService.encryptToken(process.env.CANVAS_PERSONAL_TOKEN),
+                                token_type: 'personal',
+                                expires_at: Date.now() + (365 * 24 * 60 * 60 * 1000)
+                            };
+                            console.log('🔐 Auto-authenticated with personal token for simple grade submission');
+                        }
+                    } catch (error) {
+                        console.log('⚠️  Auto-authentication failed:', error.message);
+                    }
+                }
+
+                if (!req.session.user) {
+                    return res.status(401).json({
+                        success: false,
+                        error: 'Authentication required'
+                    });
+                }
+
+                const { score, comment, userId } = req.body;
+
+                // Validate that userId is provided
+                if (!userId) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'userId is required in request body'
+                    });
+                }
+
+                console.log(`👤 Using user_id: ${userId} for submission ${req.params.submission_id}`);
+
+                // Prepare submission data for Canvas
+                const canvasSubmissionData = {
+                    submission: {
+                        posted_grade: score
+                    }
+                };
+
+                // Add comment if provided
+                if (comment) {
+                    canvasSubmissionData.comment = {
+                        text_comment: comment
+                    };
+                }
+
+                console.log('📝 Submitting simple grade to Canvas:', JSON.stringify(canvasSubmissionData, null, 2));
+
+                // Use user_id instead of submission_id for the PUT request
+                const result = await makeCanvasRequest(
+                    req,
+                    'PUT',
+                    `/api/v1/courses/${req.params.course_id}/assignments/${req.params.assignment_id}/submissions/${userId}`,
+                    canvasSubmissionData
+                );
+
+                console.log('✅ Simple grade submitted successfully');
+
+                res.json({
+                    success: true,
+                    message: 'Grade submitted successfully',
+                    data: result
+                });
+            } catch (error) {
+                console.error('Error submitting simple grade:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        // ========================
         // TEMPLATE ENDPOINTS
         // ========================
 
@@ -2301,7 +2609,10 @@ class PaletteApp {
         // Save draft grades locally (for offline work)
         router.post('/api/courses/:course_id/assignments/:assignment_id/draft-grades', async (req, res) => {
             try {
-                const { course_id, assignment_id } = req.params;
+                // Normalize Canvas IDs
+                const course_id = this.normalizeCanvasId(req.params.course_id);
+                const assignment_id = this.normalizeCanvasId(req.params.assignment_id);
+
                 const { grades, rubricKey, criterionDescriptions } = req.body;
 
                 if (!grades) {
@@ -2311,7 +2622,7 @@ class PaletteApp {
                     });
                 }
 
-                console.log(`💾 Saving draft grades for course ${course_id}, assignment ${assignment_id}`);
+                console.log(`💾 Saving draft grades for course ${course_id}, assignment ${assignment_id} (original: ${req.params.course_id}, ${req.params.assignment_id})`);
                 console.log(`💾 Number of submissions being saved: ${Object.keys(grades).length}`);
                 console.log(`💾 Submission IDs being saved:`, Object.keys(grades));
                 console.log(`💾 Rubric key:`, rubricKey);
@@ -2345,7 +2656,9 @@ class PaletteApp {
         // Get draft grades (restore from local storage)
         router.get('/api/courses/:course_id/assignments/:assignment_id/draft-grades', async (req, res) => {
             try {
-                const { course_id, assignment_id } = req.params;
+                // Normalize Canvas IDs
+                const course_id = this.normalizeCanvasId(req.params.course_id);
+                const assignment_id = this.normalizeCanvasId(req.params.assignment_id);
 
                 console.log(`📖 Loading draft grades for course ${course_id}, assignment ${assignment_id}`);
 

@@ -424,6 +424,15 @@ export function SubmissionsDashboard({
   const isGraded = (submission: Submission) => {
     if (!submission) return false; // skip empty entries
 
+    // Check if this is a quiz assignment
+    const isQuiz = (activeAssignment?.quizId !== undefined && activeAssignment?.quizId !== null) ||
+                   activeAssignment?.isNewQuiz === true;
+
+    // For quizzes, check if the submission has a score
+    if (isQuiz) {
+      return submission.score !== undefined && submission.score !== null;
+    }
+
     // First check local cache (in-progress grades)
     const localGrade = gradedSubmissionCache[submission.id];
     if (localGrade?.rubric_assessment) {

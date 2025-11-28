@@ -57,10 +57,12 @@ export function mapToPaletteAssignment(
     description: canvasAssignment.description || "",
     dueDate: canvasAssignment.due_at || "",
     pointsPossible: canvasAssignment.points_possible,
+    gradingType: canvasAssignment.grading_type as any || "points",
     rubricId:
       canvasAssignment.rubric && canvasAssignment.rubric_settings
         ? canvasAssignment.rubric_settings.id
         : undefined,
+    quizId: canvasAssignment.quiz_id,
     createdAt: canvasAssignment.created_at || "",
   };
 }

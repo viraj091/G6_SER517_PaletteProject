@@ -5,6 +5,7 @@ import { flushSync } from "react-dom";
 import { PaletteActionButton, ProgressBar } from "@/components";
 import { SavedGrades, useAssignment, useChoiceDialog, useCourse, useRubric } from "@/context";
 import { ProjectGradingView } from "./projectGradingComponents/ProjectGradingView.tsx";
+import { QuizGradingView } from "./quizGradingComponents/QuizGradingView.tsx";
 import { useGradingContext } from "@/context/GradingContext.tsx";
 import { calculateCanvasGroupAverage, calculateGroupAverage } from "@/utils";
 import { cn } from "@/lib/utils.ts";
@@ -98,7 +99,19 @@ export function GroupSubmissions({
   }, [setGradedSubmissionCache, closeDialog, fetchSubmissions, openGradingViewWithMode]);
 
   const toggleGradingView = () => {
-    if (!activeRubric || !activeRubric.id || !activeRubric.criteria || activeRubric.criteria.length === 0) {
+    // Allow quiz grading without a rubric (Classic Quizzes have quizId, New Quizzes have isNewQuiz)
+    const isQuiz = (activeAssignment?.quizId !== undefined && activeAssignment?.quizId !== null) ||
+                   activeAssignment?.isNewQuiz === true;
+
+    console.log('🔍 Quiz detection:', {
+      activeAssignment,
+      quizId: activeAssignment?.quizId,
+      isNewQuiz: activeAssignment?.isNewQuiz,
+      isQuiz,
+      hasRubric: !(!activeRubric || !activeRubric.id || !activeRubric.criteria || activeRubric.criteria.length === 0)
+    });
+
+    if (!isQuiz && (!activeRubric || !activeRubric.id || !activeRubric.criteria || activeRubric.criteria.length === 0)) {
       openDialog({
         title: "No Rubric Found",
         message: "This assignment does not have a rubric for grading. Please create a rubric first and try again.",
@@ -278,16 +291,29 @@ export function GroupSubmissions({
         </div>
       </div>
 
-      <ProjectGradingView
-        isOpen={isGradingViewOpen}
-        initMode={initMode}
-        groupName={groupName}
-        submissions={submissions}
-        onClose={() => {
-          setInitMode("none");
-          setGradingViewOpen(false);
-        }}
-      />
+      {/* Conditionally render QuizGradingView for quizzes or ProjectGradingView for rubric-based assignments */}
+      {(activeAssignment?.quizId || activeAssignment?.isNewQuiz) ? (
+        <QuizGradingView
+          isOpen={isGradingViewOpen}
+          groupName={groupName}
+          submissions={submissions}
+          onClose={() => {
+            setInitMode("none");
+            setGradingViewOpen(false);
+          }}
+        />
+      ) : (
+        <ProjectGradingView
+          isOpen={isGradingViewOpen}
+          initMode={initMode}
+          groupName={groupName}
+          submissions={submissions}
+          onClose={() => {
+            setInitMode("none");
+            setGradingViewOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

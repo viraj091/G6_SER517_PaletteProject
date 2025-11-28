@@ -21,5 +21,7 @@ export interface Assignment {
   pointsPossible: number;
   gradingType: GradingType; // Canvas grading type
   rubricId: number | undefined; // associated rubric
+  quizId?: number; // if this assignment is a Classic Quiz
+  isNewQuiz?: boolean; // if this assignment is a New Quiz (Quizzes.Next)
   createdAt: string;
 }

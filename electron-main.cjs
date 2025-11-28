@@ -79,10 +79,12 @@ function startBackend() {
   const isDev = process.env.NODE_ENV === 'development';
   const backendPath = isDev
     ? path.join(__dirname, 'backend/src/palette2/server.cjs')
-    : path.join(process.resourcesPath, 'app/backend/src/palette2/server.cjs');
+    : path.join(process.resourcesPath, 'app.asar.unpacked/backend/src/palette2/server.cjs');
 
   console.log('Starting backend server...');
   console.log('Backend path:', backendPath);
+  console.log('Resources path:', process.resourcesPath);
+  console.log('Is Development:', isDev);
 
   // Start the backend server
   backendProcess = spawn('node', [backendPath], {
@@ -111,6 +113,22 @@ app.on('ready', () => {
 
 // Quit when all windows are closed
 app.on('window-all-closed', () => {
+  // Kill backend process before quitting
+  if (backendProcess) {
+    console.log('Stopping backend server on window close...');
+    if (process.platform === 'win32') {
+      const { execSync } = require('child_process');
+      try {
+        execSync(`taskkill /pid ${backendProcess.pid} /T /F`, { stdio: 'ignore' });
+      } catch (error) {
+        console.error('Error killing backend process:', error);
+      }
+    } else {
+      backendProcess.kill('SIGTERM');
+    }
+    backendProcess = null;
+  }
+
   // On macOS, applications stay active until the user quits explicitly
   if (process.platform !== 'darwin') {
     app.quit();
@@ -124,11 +142,21 @@ app.on('activate', () => {
   }
 });
 
-// Clean up backend process when app quits
+// Clean up backend process when app quits (additional safety)
 app.on('before-quit', () => {
   if (backendProcess) {
-    console.log('Stopping backend server...');
-    backendProcess.kill();
+    console.log('Stopping backend server before quit...');
+    if (process.platform === 'win32') {
+      const { execSync } = require('child_process');
+      try {
+        execSync(`taskkill /pid ${backendProcess.pid} /T /F`, { stdio: 'ignore' });
+      } catch (error) {
+        console.error('Error killing backend process:', error);
+      }
+    } else {
+      backendProcess.kill('SIGTERM');
+    }
+    backendProcess = null;
   }
 });
 

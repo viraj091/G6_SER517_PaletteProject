@@ -20,6 +20,14 @@ dist-electron
 settings.json
 templates.json
 tags.json
+data/canvas-token.json
+
+# cookies and test files
+cookies*.txt
+test_cookies.txt
+
+# Claude Code directory
+.claude/
 
 
 # Editor directories and files
