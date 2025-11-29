@@ -117,9 +117,9 @@ class PaletteApp {
     }
 
     setupMiddleware() {
-        // CORS configuration
+        // CORS configuration - allow all origins in production since frontend/backend are same domain
         this.app.use(cors({
-            origin: ['http://localhost:3000', 'http://localhost:5173'],
+            origin: process.env.NODE_ENV === 'production' ? true : ['http://localhost:3000', 'http://localhost:5173'],
             credentials: true
         }));
 
