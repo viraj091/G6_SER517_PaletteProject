@@ -123,6 +123,11 @@ class PaletteApp {
     }
 
     setupMiddleware() {
+        // Trust proxy - needed for Render and other reverse proxy environments
+        if (process.env.NODE_ENV === 'production') {
+            this.app.set('trust proxy', 1);
+        }
+
         // CORS configuration - allow all origins in production since frontend/backend are same domain
         this.app.use(cors({
             origin: process.env.NODE_ENV === 'production' ? true : ['http://localhost:3000', 'http://localhost:5173'],
