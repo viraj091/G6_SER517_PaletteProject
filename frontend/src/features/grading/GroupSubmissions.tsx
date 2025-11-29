@@ -9,6 +9,7 @@ import { QuizGradingView } from "./quizGradingComponents/QuizGradingView.tsx";
 import { useGradingContext } from "@/context/GradingContext.tsx";
 import { calculateCanvasGroupAverage, calculateGroupAverage } from "@/utils";
 import { cn } from "@/lib/utils.ts";
+import { API_BASE_URL } from "@/config/api";
 
 interface GroupSubmissionsProps {
   groupName: string;
@@ -70,7 +71,7 @@ export function GroupSubmissions({
 
       try {
         const response = await fetch(
-          `http://localhost:3000/api/courses/${activeCourse.id}/assignments/${activeAssignment.id}/draft-grades`
+          `${API_BASE_URL}/courses/${activeCourse.id}/assignments/${activeAssignment.id}/draft-grades`
         );
         const result = await response.json() as PaletteAPIResponse<SavedGrades>;
         setHasSavedDrafts(result.success && result.data !== null);
@@ -153,7 +154,7 @@ export function GroupSubmissions({
               if (isSaved && activeCourse?.id && activeAssignment?.id) {
                 try {
                   const response = await fetch(
-                    `http://localhost:3000/api/courses/${activeCourse.id}/assignments/${activeAssignment.id}/draft-grades`
+                    `${API_BASE_URL}/courses/${activeCourse.id}/assignments/${activeAssignment.id}/draft-grades`
                   );
                   const result = await response.json() as PaletteAPIResponse<SavedGrades>;
                   if (result.success && result.data) {

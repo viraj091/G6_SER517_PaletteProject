@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { useState, useEffect } from "react";
 import { PaletteActionButton } from "@/components";
 import { useAssignment, useCourse } from "@/context";
+import { API_BASE_URL } from "@/config/api";
 
 type QuizGradingViewProps = {
   groupName: string;
@@ -59,7 +60,7 @@ export function QuizGradingView({
     setLoadingQuestions(true);
     try {
       const response = await fetch(
-        `http://localhost:3000/api/courses/${activeCourse.id}/quizzes/${activeAssignment.quizId}/questions`
+        `${API_BASE_URL}/courses/${activeCourse.id}/quizzes/${activeAssignment.quizId}/questions`
       );
       const result = await response.json();
 
@@ -96,7 +97,7 @@ export function QuizGradingView({
 
     try {
       const response = await fetch(
-        `http://localhost:3000/api/courses/${activeCourse.id}/quizzes/${activeAssignment.quizId}/submissions/${submissionId}`
+        `${API_BASE_URL}/courses/${activeCourse.id}/quizzes/${activeAssignment.quizId}/submissions/${submissionId}`
       );
       const result = await response.json();
 
@@ -245,7 +246,7 @@ export function QuizGradingView({
 
     try {
       const response = await fetch(
-        `http://localhost:3000/api/courses/${activeCourse.id}/assignments/${activeAssignment.id}/submissions/${submission.id}/simple-grade`,
+        `${API_BASE_URL}/courses/${activeCourse.id}/assignments/${activeAssignment.id}/submissions/${submission.id}/simple-grade`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

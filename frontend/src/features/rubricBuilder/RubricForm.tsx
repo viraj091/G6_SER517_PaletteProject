@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { useChoiceDialog, useSettings } from "@/context";
 import { createCriterion, createTemplate } from "@/utils";
 import { useRubricBuilder, useTemplate } from "@/hooks";
+import { API_BASE_URL } from "@/config/api";
 
 // useTemplate() returns different instances of state >:( so we have to pass it here from rubric main
 interface RubricFormProps {
@@ -279,7 +280,7 @@ export function RubricForm({
 
     try {
       setLoading(true);
-      const response = await fetch("http://localhost:3000/api/templates", {
+      const response = await fetch(`${API_BASE_URL}/templates`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

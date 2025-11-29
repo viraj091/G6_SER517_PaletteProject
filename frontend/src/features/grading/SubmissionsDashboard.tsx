@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils.ts";
 import { RubricForm } from "@/features/rubricBuilder/RubricForm.tsx";
 import { useFetch, useRubricBuilder } from "@/hooks";
 import { calcMaxPoints } from "@/utils";
+import { API_BASE_URL } from "@/config/api";
 
 type SubmissionDashboardProps = {
   submissions: GroupedSubmissions;
@@ -44,7 +45,7 @@ export function SubmissionsDashboard({
   const { gradedSubmissionCache, setGradedSubmissionCache } =
     useGradingContext();
 
-  const BASE_URL = "http://localhost:3000/api";
+  const BASE_URL = API_BASE_URL;
   const GRADING_ENDPOINT = `/courses/${activeCourse?.id}/assignments/${activeAssignment?.id}/submissions/`;
 
   const [tempGrades, setTempGrades] = useState<
