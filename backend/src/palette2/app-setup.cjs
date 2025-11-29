@@ -332,10 +332,18 @@ class PaletteApp {
                     console.error('Failed to save token:', saveError.message);
                 }
 
-                res.json({
-                    success: true,
-                    message: 'Token updated successfully',
-                    user: req.session.user
+                // Save session before responding
+                req.session.save((err) => {
+                    if (err) {
+                        console.error('Failed to save session:', err);
+                        return res.status(500).json({ error: 'Failed to save session' });
+                    }
+
+                    res.json({
+                        success: true,
+                        message: 'Token updated successfully',
+                        user: req.session.user
+                    });
                 });
 
             } catch (error) {
