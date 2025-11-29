@@ -4,7 +4,7 @@ services:
     env: node
     region: oregon
     plan: free
-    buildCommand: rm -rf node_modules package-lock.json && npm install && npm run build:all
+    buildCommand: npm install && npm install @rollup/rollup-linux-x64-gnu --save-optional && npm run build:all
     startCommand: node backend/src/palette2/server.cjs
     envVars:
       - key: NODE_ENV
