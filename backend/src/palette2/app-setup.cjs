@@ -22,6 +22,12 @@ class PaletteApp {
         this.config = this.loadConfig();
     }
 
+    // Helper to get data directory path
+    getDataPath(...segments) {
+        const dataDir = process.env.DATA_DIR || './data';
+        return path.join(dataDir, ...segments);
+    }
+
     loadConfig() {
         // In Electron mode, use absolute paths for data directory
         const isElectron = process.env.ELECTRON_MODE === 'true';
@@ -30,8 +36,8 @@ class PaletteApp {
             // In packaged Electron app: resources/app.asar.unpacked/data/palette.db
             dbPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'data', 'palette.db');
         } else {
-            // In development mode
-            dbPath = process.env.DB_PATH || './data/palette.db';
+            // In development mode or production
+            dbPath = process.env.DB_PATH || this.getDataPath('palette.db');
         }
 
         return {
@@ -117,9 +123,14 @@ class PaletteApp {
     }
 
     setupMiddleware() {
-        // CORS configuration
+        // Trust proxy - needed for Render and other reverse proxy environments
+        if (process.env.NODE_ENV === 'production') {
+            this.app.set('trust proxy', 1);
+        }
+
+        // CORS configuration - allow all origins in production since frontend/backend are same domain
         this.app.use(cors({
-            origin: ['http://localhost:3000', 'http://localhost:5173'],
+            origin: process.env.NODE_ENV === 'production' ? true : ['http://localhost:3000', 'http://localhost:5173'],
             credentials: true
         }));
 
@@ -216,7 +227,7 @@ class PaletteApp {
                     console.log('🔄 Falling back to Personal Access Token...');
 
                     // Fall back to Personal Access Token
-                    const tokenPath = path.join(__dirname, '..', '..', '..', 'data', 'canvas-token.json');
+                    const tokenPath = this.getDataPath('canvas-token.json');
                     console.log('🔍 Checking for token file at:', tokenPath);
                     console.log('🔍 Token file exists:', fs.existsSync(tokenPath));
                     if (fs.existsSync(tokenPath)) {
@@ -315,7 +326,7 @@ class PaletteApp {
                 // Save token to separate file for fallback use (won't be overwritten by cookies)
                 try {
                     const fs = require('fs');
-                    const tokenPath = path.join(__dirname, '..', '..', '..', 'data', 'canvas-token.json');
+                    const tokenPath = this.getDataPath('canvas-token.json');
                     const tokenData = {
                         token: token, // Store unencrypted for API fallback
                         lastUpdate: new Date().toISOString()
@@ -326,10 +337,18 @@ class PaletteApp {
                     console.error('Failed to save token:', saveError.message);
                 }
 
-                res.json({
-                    success: true,
-                    message: 'Token updated successfully',
-                    user: req.session.user
+                // Save session before responding
+                req.session.save((err) => {
+                    if (err) {
+                        console.error('Failed to save session:', err);
+                        return res.status(500).json({ error: 'Failed to save session' });
+                    }
+
+                    res.json({
+                        success: true,
+                        message: 'Token updated successfully',
+                        user: req.session.user
+                    });
                 });
 
             } catch (error) {
@@ -344,6 +363,14 @@ class PaletteApp {
         // Canvas browser-based login endpoint
         router.post('/api/user/canvas-login', async (req, res) => {
             try {
+                // Disable GUI-based login in production (headless server)
+                if (process.env.NODE_ENV === 'production') {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'GUI-based login not available in web deployment. Please use personal access token instead.'
+                    });
+                }
+
                 const { spawn } = require('child_process');
                 const fs = require('fs');
                 const os = require('os');
@@ -554,7 +581,7 @@ class PaletteApp {
                 const hasCanvasCookies = settings.canvasCookies && Object.keys(settings.canvasCookies).length > 0;
 
                 // Check if Canvas token exists
-                const tokenPath = path.join(process.cwd(), 'data', 'canvas-token.json');
+                const tokenPath = this.getDataPath('canvas-token.json');
                 const hasToken = fs.existsSync(tokenPath);
 
                 res.json({
@@ -1090,7 +1117,7 @@ class PaletteApp {
                         // Fallback to token from canvas-token.json file
                         if (!token) {
                             console.log('🔍 No session token, checking canvas-token.json file...');
-                            const tokenPath = path.join(__dirname, '..', '..', '..', 'data', 'canvas-token.json');
+                            const tokenPath = this.getDataPath('canvas-token.json');
                             console.log('🔍 Token file path:', tokenPath);
                             console.log('🔍 Token file exists:', fs.existsSync(tokenPath));
                             if (fs.existsSync(tokenPath)) {
@@ -1190,7 +1217,7 @@ class PaletteApp {
 
                     // Fallback to token from canvas-token.json file
                     if (!token) {
-                        const tokenPath = path.join(__dirname, '..', '..', '..', 'data', 'canvas-token.json');
+                        const tokenPath = this.getDataPath('canvas-token.json');
                         if (fs.existsSync(tokenPath)) {
                             const tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
                             if (tokenData.token) {
@@ -2769,7 +2796,7 @@ class PaletteApp {
                     console.log('🔄 Falling back to Personal Access Token...');
 
                     // Fall back to Personal Access Token
-                    const tokenPath = path.join(__dirname, '..', '..', '..', 'data', 'canvas-token.json');
+                    const tokenPath = this.getDataPath('canvas-token.json');
                     console.log('🔍 Checking for token file at:', tokenPath);
                     console.log('🔍 Token file exists:', fs.existsSync(tokenPath));
                     if (fs.existsSync(tokenPath)) {

@@ -7,13 +7,14 @@
 
 import { useCallback, useState } from "react";
 import { PaletteAPIRequest, PaletteAPIResponse } from "palette-types";
+import { API_BASE_URL } from "@/config/api";
 
 const DEFAULT_REQUEST = {
   headers: {
     "Content-Type": "application/json",
     "Cache-Control": "no-cache",
   },
-  baseURL: "http://localhost:3000/api",
+  baseURL: API_BASE_URL,
   method: "GET",
 } as PaletteAPIRequest;
 

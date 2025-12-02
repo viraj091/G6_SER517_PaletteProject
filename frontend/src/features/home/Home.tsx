@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Footer, Header, Dialog } from "@/components";
 import { useFetch } from "@/hooks";
 import { useChoiceDialog } from "@/context";
+import { API_BASE_URL } from "@/config/api";
 import Paint from "./Paint";
 
 function hexToTailwindColor(hex: string): string {
@@ -145,7 +146,7 @@ export function Home(): ReactElement {
 
     setTokenLoginLoading(true);
     try {
-      const response = await fetch("http://localhost:3000/api/settings/token", {
+      const response = await fetch(`${API_BASE_URL}/settings/token`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

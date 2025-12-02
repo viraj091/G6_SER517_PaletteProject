@@ -23,10 +23,13 @@ class CanvasAuthService {
 
     setupMiddleware() {
         // Session configuration with SQLite store
+        // Determine data directory path
+        const dataDir = process.env.DATA_DIR || './data';
+
         this.app.use(session({
             store: new SQLiteStore({
                 db: 'sessions.db',
-                dir: './data'
+                dir: dataDir
             }),
             secret: this.config.sessionSecret,
             resave: false,
@@ -35,7 +38,7 @@ class CanvasAuthService {
                 secure: process.env.NODE_ENV === 'production',
                 httpOnly: true,
                 maxAge: 24 * 60 * 60 * 1000, // 24 hours
-                sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' // Allow cross-origin in dev
+                sameSite: 'lax' // Same-site in both dev and production
             }
         }));
 

@@ -9,6 +9,7 @@ import {
   CourseSelectionMenu,
   Dialog,
 } from "@/components";
+import { API_BASE_URL } from "@/config/api";
 import clsx from "clsx";
 
 export function Navbar() {
@@ -68,7 +69,7 @@ export function Navbar() {
   const handleLogoutClicked = async () => {
     try {
       // Call backend logout endpoint
-      await fetch("http://localhost:3000/api/user/logout", {
+      await fetch(`${API_BASE_URL}/user/logout`, {
         method: "POST",
         credentials: "include",
       });

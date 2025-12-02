@@ -4,13 +4,17 @@ services:
     env: node
     region: oregon
     plan: free
-    buildCommand: npm install && npm run build:all
+    buildCommand: rm -rf node_modules package-lock.json && npm install && npm run build:all
     startCommand: node backend/src/palette2/server.cjs
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3000
+      - key: DATA_DIR
+        value: /opt/render/project/src/data
+      - key: DB_PATH
+        value: /opt/render/project/src/data/palette.db
       - key: CANVAS_BASE_URL
         sync: false
       - key: CANVAS_CLIENT_ID

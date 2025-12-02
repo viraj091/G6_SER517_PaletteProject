@@ -83,5 +83,10 @@
     "vite": "^6.2.3",
     "vite-tsconfig-paths": "^5.1.0",
     "vitest": "^2.1.4"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.28.1",
+    "lightningcss-linux-x64-gnu": "^1.28.2",
+    "@tailwindcss/oxide-linux-x64-gnu": "^4.0.17"
   }
 }
