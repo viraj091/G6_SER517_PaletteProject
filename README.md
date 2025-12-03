@@ -1,5 +1,7 @@
 # Palette :art:
 
+**🌐 Live Demo: [https://g6-ser517-paletteproject.onrender.com](https://g6-ser517-paletteproject.onrender.com)**
+
 [![Build Checks](https://github.com/jwsmith24/palette/actions/workflows/ci-checks.yml/badge.svg)](https://github.com/jwsmith24/palette/actions/workflows/ci-checks.yml)
 ![Docker](https://img.shields.io/badge/Docker-Compatible-blue)
 ![Node.js](https://img.shields.io/badge/Node.js-v18+-green)
@@ -44,6 +46,34 @@ npm run build:electron
 ```
 
 The installer will be created in `dist-electron/Palette Setup 2.0.0.exe`
+
+---
+
+## 🌐 Web Deployment (No Installation Required)
+
+**Try Palette instantly in your browser: [https://g6-ser517-paletteproject.onrender.com](https://g6-ser517-paletteproject.onrender.com)**
+
+### Features of the Web Version
+
+- ✅ **No installation required** - Access from any browser
+- ✅ **Cross-platform** - Works on Windows, Mac, and Linux
+- ✅ **Always up-to-date** - Automatically runs the latest version
+- ✅ **Full functionality** - All features available in the desktop app
+- ✅ **Persistent data** - Your courses, assignments, and rubrics are saved
+
+### Using the Web Version
+
+1. Navigate to [https://g6-ser517-paletteproject.onrender.com](https://g6-ser517-paletteproject.onrender.com)
+2. Click "Settings" → "Login with Token"
+3. Paste your Canvas personal access token (see [Canvas API Token](#canvas-api-token) section below)
+4. Select your course and assignment
+5. Start creating rubrics and grading!
+
+### Important Notes
+
+- **First load may take 30-60 seconds** - The server spins down after inactivity (free tier hosting)
+- **Token login only** - Browser-based Canvas login is not available in the web deployment (use the Windows app for that feature)
+- **Hosted on Render** - Deployed with persistent disk storage for database files
 
 ---
 
