@@ -363,14 +363,6 @@ class PaletteApp {
         // Canvas browser-based login endpoint
         router.post('/api/user/canvas-login', async (req, res) => {
             try {
-                // Disable GUI-based login in production (headless server)
-                if (process.env.NODE_ENV === 'production') {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'GUI-based login not available in web deployment. Please use personal access token instead.'
-                    });
-                }
-
                 const { spawn } = require('child_process');
                 const fs = require('fs');
                 const os = require('os');
